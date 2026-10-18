@@ -1,0 +1,202 @@
+import SwiftUI
+import SystemCore
+
+struct DashboardView: View {
+    @ObservedObject var model: MonitorModel
+    private let accent = Color(red: 0.28, green: 0.47, blue: 0.96)
+    private func bytes(_ value: UInt64) -> String { ByteCountFormatter.string(fromByteCount: Int64(clamping: value), countStyle: .memory) }
+    private func rate(_ value: Double?) -> String {
+        guard let value, value.isFinite else { return "—" }
+        return ByteCountFormatter.string(fromByteCount: Int64(min(value, Double(Int64.max / 2))), countStyle: .file) + "/с"
+    }
+    var body: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            HStack(spacing: 9) {
+                Image(systemName: "waveform.path").font(.system(size: 18, weight: .semibold)).foregroundStyle(accent)
+                Text("STIX System").font(.system(size: 16, weight: .semibold))
+                Spacer()
+                Circle().fill(model.thermalColor).frame(width: 6, height: 6)
+                Text(model.thermalTitle).font(.system(size: 10)).foregroundStyle(.secondary)
+            }
+            VStack(alignment: .leading, spacing: 12) {
+                HStack(alignment: .firstTextBaseline) {
+                    label("ЦП", icon: "cpu")
+                    Spacer()
+                    Text(model.snapshot?.cpu.map { "\(Int(($0 * 100).rounded()))" } ?? "—")
+                        .font(.system(size: 31, weight: .medium, design: .rounded)).monospacedDigit()
+                    Text("%").font(.system(size: 13)).foregroundStyle(.secondary)
+                }
+                Sparkline(values: model.cpuHistory, color: accent).frame(height: 33)
+                    .accessibilityLabel("График загрузки процессора за последнюю минуту")
+                Divider()
+                HStack {
+                    label("Память", icon: "memorychip")
+                    Spacer()
+                    if let memory = model.snapshot?.memory {
+                        Text("\(bytes(memory.used)) / \(bytes(memory.total))").monospacedDigit()
+                    } else { Text("—") }
+                }.font(.system(size: 12))
+                if let memory = model.snapshot?.memory {
+                    GeometryReader { geometry in
+                        Capsule().fill(.quaternary)
+                        Capsule().fill(memory.pressure >= 4 ? Color.red : memory.pressure >= 2 ? Color.orange : accent)
+                            .frame(width: geometry.size.width * memory.fraction)
+                    }.frame(height: 4)
+                    HStack {
+                        Text("Давление памяти")
+                        Spacer()
+                        Text(memory.pressure == 1 ? "Нормальное" : memory.pressure == 2 ? "Повышенное" : memory.pressure >= 4 ? "Высокое" : "Недоступно")
+                    }.font(.system(size: 10)).foregroundStyle(.secondary)
+                }
+                Divider()
+                HStack {
+                    label("Диск", icon: "internaldrive")
+                    Spacer()
+                    if let disk = model.snapshot?.disk { Text("\(bytes(disk.free)) свободно").monospacedDigit() }
+                    else { Text("—") }
+                }.font(.system(size: 12))
+                HStack {
+                    Text("Чтение  \(rate(model.snapshot?.disk?.readBytesPerSecond))")
+                    Spacer()
+                    Text("Запись  \(rate(model.snapshot?.disk?.writeBytesPerSecond))")
+                }.font(.system(size: 10)).monospacedDigit().foregroundStyle(.secondary)
+                    .help("Скорость чтения и записи всех физических дисков Mac")
+            }
+            .padding(14)
+            .background(.primary.opacity(0.035), in: RoundedRectangle(cornerRadius: 14))
+            temperatures
+            VStack(alignment: .leading, spacing: 10) {
+                HStack {
+                    Text("БОЛЬШЕ ВСЕГО ПАМЯТИ").font(.system(size: 9, weight: .semibold)).tracking(1.1)
+                    Spacer()
+                    Text("RAM").font(.system(size: 9))
+                }.foregroundStyle(.secondary)
+                if let processes = model.snapshot?.processes, !processes.isEmpty {
+                    ForEach(processes) { process in
+                        HStack(spacing: 8) {
+                            Text(process.name).lineLimit(1).truncationMode(.middle)
+                            Spacer(minLength: 4)
+                            Text(bytes(process.residentBytes)).monospacedDigit().foregroundStyle(.secondary)
+                        }.font(.system(size: 11))
+                            .help("\(process.name) · PID \(process.id) · резидентная память")
+                    }
+                } else { Text("Читаю список процессов…").font(.system(size: 11)).foregroundStyle(.secondary) }
+            }.padding(.horizontal, 3)
+            Divider()
+            fans
+            if let error = model.message ?? model.hardware?.error ?? model.snapshot?.issues.first {
+                Text(error).font(.system(size: 10)).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+            }
+            HStack {
+                Spacer()
+                Button("Завершить") { model.quit() }.buttonStyle(.plain).help("Вернуть вентиляторы в Авто и завершить приложение")
+            }.font(.system(size: 10)).foregroundStyle(.secondary)
+        }
+        .padding(20)
+        .frame(width: 382)
+        .background(.regularMaterial)
+        .tint(accent)
+    }
+    private func label(_ title: String, icon: String) -> some View {
+        Label(title, systemImage: icon).foregroundStyle(.secondary).font(.system(size: 12))
+    }
+    @ViewBuilder private var temperatures: some View {
+        if let readings = model.hardware?.temperatures, !readings.isEmpty {
+            HStack(spacing: 0) {
+                ForEach(readings) { reading in
+                    VStack(spacing: 4) {
+                        Text(reading.title).font(.system(size: 9)).foregroundStyle(.secondary)
+                        Text(reading.celsius.map { "\(Int($0.rounded()))°" } ?? "—")
+                            .font(.system(size: 15, weight: .medium, design: .rounded)).monospacedDigit()
+                    }.frame(maxWidth: .infinity)
+                        .help(reading.celsius == nil ? "Датчик недоступен на этом Mac" : reading.detail)
+                }
+            }.padding(.vertical, 3)
+        }
+    }
+    @ViewBuilder private var fans: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack {
+                label("Вентиляторы", icon: "fanblades")
+                Spacer()
+                if model.busy { ProgressView().controlSize(.mini) }
+                Toggle("Sync", isOn: Binding(get: { model.syncFans }, set: { model.setSync($0) }))
+                    .toggleStyle(.switch).controlSize(.mini).font(.system(size: 11)).fixedSize()
+                    .disabled(model.busy)
+            }
+            if let fans = model.hardware?.fans, !fans.isEmpty {
+                if model.syncFans {
+                    HStack(spacing: 15) {
+                        ForEach(fans) { fan in rpm(fan, named: false) }
+                    }
+                    if model.serviceReady { fanControls(id: nil) }
+                } else {
+                    ForEach(fans) { fan in
+                        VStack(alignment: .leading, spacing: 6) {
+                            HStack { rpm(fan, named: true); Spacer()
+                                Text(fan.manual == true ? "Вручную" : "Авто").font(.system(size: 9)).foregroundStyle(.secondary)
+                            }
+                            if model.serviceReady { fanControls(id: fan.id) }
+                        }
+                    }
+                }
+                if !model.serviceReady {
+                    Button(model.needsApproval ? "Разрешить в настройках macOS…" : "Включить управление…") { model.enableService() }
+                        .buttonStyle(.bordered).controlSize(.small)
+                } else {
+                    Text("При нагреве или потере связи — обратно в Авто")
+                        .font(.system(size: 9)).foregroundStyle(.tertiary)
+                }
+            } else {
+                Text(model.hardware?.error ?? "Нет доступных вентиляторов").font(.system(size: 11)).foregroundStyle(.secondary)
+            }
+        }
+    }
+    private func rpm(_ fan: FanReading, named: Bool) -> some View {
+        HStack(spacing: 5) {
+            Text(named ? "Вентилятор \(fan.id + 1)" : "\(fan.id + 1)").foregroundStyle(.secondary)
+            Text("\(Int(fan.current.rounded()))").monospacedDigit()
+            Text("об/мин").foregroundStyle(.tertiary)
+        }.font(.system(size: 11))
+    }
+    private func fanControls(id: Int?) -> some View {
+        let isManual = id.map { model.manualFanIDs.contains($0) } ?? model.manual
+        let binding = Binding<Double>(
+            get: { id.flatMap { model.fanIntensities[$0] } ?? model.intensity },
+            set: { value in if let id { model.fanIntensities[id] = value } else { model.intensity = value } })
+        return HStack(spacing: 6) {
+            Button("Авто") { model.automatic(id: id) }.buttonStyle(.bordered).tint(isManual ? .secondary : accent)
+            Button(isManual ? "Применить" : "Вручную") { model.applyManual(id: id) }
+                .buttonStyle(.bordered).tint(isManual ? accent : .secondary)
+            Slider(value: binding, in: 0...1)
+                .accessibilityLabel(id.map { "Охлаждение вентилятора \($0 + 1)" } ?? "Общее охлаждение вентиляторов")
+                .help("От безопасного уровня до максимума. Нажми Вручную или Применить.")
+            Text("\(Int((binding.wrappedValue * 100).rounded()))%")
+                .font(.system(size: 10)).monospacedDigit().frame(width: 30, alignment: .trailing)
+        }.controlSize(.small).disabled(model.busy)
+    }
+
+}
+private struct Sparkline: View {
+    let values: [Double]
+    let color: Color
+    var body: some View {
+        GeometryReader { geometry in
+            let points = values.enumerated().map { index, value in
+                CGPoint(x: geometry.size.width * CGFloat(index) / CGFloat(max(values.count - 1, 1)),
+                        y: geometry.size.height * (1 - min(1, max(0, value))))
+            }
+            if let first = points.first, let last = points.last {
+                Path { path in
+                    path.move(to: CGPoint(x: first.x, y: geometry.size.height))
+                    for point in points { path.addLine(to: point) }
+                    path.addLine(to: CGPoint(x: last.x, y: geometry.size.height)); path.closeSubpath()
+                }.fill(LinearGradient(colors: [color.opacity(0.24), color.opacity(0.02)], startPoint: .top, endPoint: .bottom))
+                Path { path in
+                    path.move(to: first)
+                    for point in points.dropFirst() { path.addLine(to: point) }
+                }.stroke(color, style: StrokeStyle(lineWidth: 1.7, lineCap: .round, lineJoin: .round))
+            }
+        }
+    }
+}

@@ -27,3 +27,7 @@ Build compact MenuBarExtra panel with CPU sparkline, memory, disk, processes, th
 ## Task 4 — delivery
 Files: README.md; docs/verification.md; .gitignore.
 Run release build and tests, verify signatures, service packaging, live diagnostic output and UI. Record exact verified limitations. Commit focused source changes, create private repository through authenticated gh, push and verify remote SHA. Leave installed application running.
+
+## Execution status
+
+All four tasks implemented. User additions (independent fans, Sync, separate component temperatures, notch-safe placement) are included in source, tests and design. See `docs/verification.md` for local hardware results and explicit limits. Source delivery uses the private `asuharev434-eng/stix-system` repository.

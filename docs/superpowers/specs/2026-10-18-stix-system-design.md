@@ -9,3 +9,10 @@ AppleSMC is a private hardware interface, isolated behind a C bridge with valida
 Build app and service locally with ad-hoc signing, install the app into ~/Applications, run real hardware diagnostics and UI smoke checks. Developer ID signing/notarization are outside local verification. Publish sources to a private GitHub repository because no public visibility was requested.
 
 User approved this design and added top-five RAM processes on 2026-10-18, explicitly authorizing build, local testing and GitHub publication.
+
+## Approved additions during implementation
+
+- Independent controls and Auto for each fan; Sync switch for shared editing. A partial Auto operation must preserve the other fan's manual setting and lease.
+- Separate component temperatures: CPU, GPU, memory proximity, NAND SSD, battery. Use model-specific sensor identities; aggregate component maxima; unavailable values are explicit.
+- Notch-safe placement: use the screen visible frame and top safe area, clamp horizontal position, and scroll on short displays.
+- Certificate issuance/import was explicitly approved. A Developer ID Application identity is installed in the local keychain; signing secrets remain outside the repository.

@@ -1,0 +1,12 @@
+.build/
+dist/
+.DS_Store
+*.xcuserstate
+.swiftpm/
+.env
+.env.*
+*.key
+*.p12
+*.p8
+*.cer
+*.certSigningRequest
