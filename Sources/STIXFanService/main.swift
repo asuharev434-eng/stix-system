@@ -18,7 +18,7 @@ private let controller = FanController(hardware: SMC(), recoveryNeeded: FileMana
 
 private final class Session: NSObject, FanServiceProtocol {
     let id = UUID().uuidString
-    func ping(reply: @escaping (String) -> Void) { reply("2") }
+    func ping(reply: @escaping (String) -> Void) { reply("3") }
     private func perform(_ reply: @escaping (String?) -> Void, _ work: @escaping () throws -> Void) {
         queue.async {
             do { try work(); reply(nil) }
@@ -30,6 +30,13 @@ private final class Session: NSObject, FanServiceProtocol {
             guard (-1..<10).contains(fanID) else { throw HardwareError.invalid("Некорректный вентилятор") }
             try controller.manual(fraction: fraction, owner: self.id, fanID: fanID == -1 ? nil : fanID)
             logger.notice("Manual fan=\(fanID), intensity=\(fraction), session=\(self.id, privacy: .public)")
+        }
+    }
+    func manualRPM(fanID: Int, rpm: Double, reply: @escaping (String?) -> Void) {
+        perform(reply) {
+            guard (-1..<10).contains(fanID) else { throw HardwareError.invalid("Некорректный вентилятор") }
+            try controller.manualRPM(rpm: rpm, owner: self.id, fanID: fanID == -1 ? nil : fanID)
+            logger.notice("Manual fan=\(fanID), rpm=\(rpm)")
         }
     }
     func renew(reply: @escaping (String?) -> Void) { perform(reply) { try controller.renew(owner: self.id) } }

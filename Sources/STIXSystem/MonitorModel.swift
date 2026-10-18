@@ -12,6 +12,10 @@ private actor MetricsWorker {
 }
 
 @MainActor final class MonitorModel: ObservableObject {
+    let preferences = AppPreferences()
+    @Published var fanRPMs: [Int: Double] = [:]
+    @Published var commonRPM: Double?
+    private var fanBaselines: [Int: Double] = [:]
     @Published var snapshot: SystemSnapshot?
     @Published var hardware: ThermalReading?
     @Published var cpuHistory: [Double] = []
@@ -46,7 +50,7 @@ private actor MetricsWorker {
                     Task { @MainActor in
                         guard let self else { return }
                         self.renewing = false
-                        if let error { self.manualFanIDs = []; self.message = error; self.logger.error("Lease: \(error, privacy: .public)") }
+                        if let error { self.manualFanIDs = []; self.fanBaselines = [:]; self.message = error; self.logger.error("Lease: \(error, privacy: .public)") }
                     }
                 }
             }
@@ -63,10 +67,12 @@ private actor MetricsWorker {
             let (snapshot, hardware) = await worker.sample()
             guard let self else { return }
             self.snapshot = snapshot; self.hardware = hardware; self.sampling = false
+            self.preferences.notifications.evaluate(snapshot, hardware: hardware)
             if let cpu = snapshot.cpu { self.cpuHistory.append(cpu); self.cpuHistory = Array(self.cpuHistory.suffix(30)) }
         }
     }
     func refreshService() {
+        preferences.refresh()
         let status = service.status
         needsApproval = status == .requiresApproval
         guard status == .enabled else { serviceReady = false; return }
@@ -90,7 +96,8 @@ private actor MetricsWorker {
         guard serviceReady, !busy else { return }
         startOperation()
         let operation = operationID
-        client.manual(fanID: id, fraction: id.flatMap { fanIntensities[$0] } ?? intensity) { [weak self] error in
+        if !manual { fanBaselines = Dictionary(uniqueKeysWithValues: (hardware?.fans ?? []).map { ($0.id, $0.current) }) }
+        let completion: (String?) -> Void = { [weak self] error in
             Task { @MainActor in
                 guard let self, self.operationID == operation else { return }
                 self.busy = false; self.message = error
@@ -101,7 +108,10 @@ private actor MetricsWorker {
                 self.sample()
             }
         }
+        if preferences.rpmUnits { client.manualRPM(fanID: id, rpm: selectedRPM(id), completion: completion) }
+        else { client.manual(fanID: id, fraction: id.flatMap { fanIntensities[$0] } ?? intensity, completion: completion) }
     }
+
     func automatic(id: Int? = nil) {
         guard serviceReady, !busy else { return }
         startOperation()
@@ -111,6 +121,7 @@ private actor MetricsWorker {
                 guard let self, self.operationID == operation else { return }
                 self.busy = false; self.message = error
                 if error == nil { if let id { self.manualFanIDs.remove(id) } else { self.manualFanIDs = [] } }
+                if !self.manual { self.fanBaselines = [:] }
                 self.sample()
             }
         }
@@ -124,6 +135,35 @@ private actor MetricsWorker {
             self.client.disconnect(); self.busy = false; self.manualFanIDs = []
             self.message = "Сервис не ответил. Ручная сессия будет сброшена автоматически."
         }
+    }
+    func setRPMUnits(_ enabled: Bool) {
+        guard enabled != preferences.rpmUnits else { return }
+        let ids = (hardware?.fans ?? []).map(\.id)
+        if enabled {
+            commonRPM = nil
+            for id in ids { fanRPMs[id] = nil }
+            commonRPM = selectedRPM(nil)
+            for id in ids { fanRPMs[id] = selectedRPM(id) }
+        } else {
+            func fraction(_ rpm: Double, _ range: ClosedRange<Double>) -> Double {
+                range.upperBound > range.lowerBound ? (rpm - range.lowerBound) / (range.upperBound - range.lowerBound) : 1
+            }
+            intensity = fraction(selectedRPM(nil), rpmBounds(nil))
+            for id in ids { fanIntensities[id] = fraction(selectedRPM(id), rpmBounds(id)) }
+        }
+        preferences.rpmUnits = enabled
+    }
+    func rpmBounds(_ id: Int?) -> ClosedRange<Double> {
+        let fans = (hardware?.fans ?? []).filter { id == nil || $0.id == id }
+        let lower = fans.map { min($0.maximum, max($0.minimum, 2000, fanBaselines[$0.id] ?? $0.current)) }.max() ?? 2000
+        let upper = max(lower, fans.map(\.maximum).min() ?? 7826)
+        return lower...upper
+    }
+    func selectedRPM(_ id: Int?) -> Double {
+        let range = rpmBounds(id)
+        let selected = id.flatMap { fanRPMs[$0] } ?? (id == nil ? commonRPM : nil)
+        let fraction = id.flatMap { fanIntensities[$0] } ?? intensity
+        return min(range.upperBound, max(range.lowerBound, selected ?? (range.lowerBound + fraction * (range.upperBound - range.lowerBound)))).rounded()
     }
     func setSync(_ enabled: Bool) {
         syncFans = enabled

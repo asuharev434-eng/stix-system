@@ -1,15 +1,22 @@
 import Foundation
 
+public enum ProcessSort: String, CaseIterable, Sendable { case memory, cpu }
+
 public struct ProcessUsage: Identifiable, Sendable, Codable, Equatable {
     public let id: Int32
     public let name: String
     public let residentBytes: UInt64
-    public init(id: Int32, name: String, residentBytes: UInt64) {
-        self.id = id; self.name = name; self.residentBytes = residentBytes
+    public let cpuPercent: Double?
+    public init(id: Int32, name: String, residentBytes: UInt64, cpuPercent: Double? = nil) {
+        self.id = id; self.name = name; self.residentBytes = residentBytes; self.cpuPercent = cpuPercent
     }
-    public static func top(_ processes: [Self]) -> [Self] {
-        Array(processes.sorted { $0.residentBytes == $1.residentBytes ? $0.id < $1.id : $0.residentBytes > $1.residentBytes }.prefix(5))
+    public static func top(_ processes: [Self], by sort: ProcessSort = .memory) -> [Self] {
+        Array(processes.sorted {
+            if sort == .cpu, $0.cpuPercent != $1.cpuPercent { return ($0.cpuPercent ?? -1) > ($1.cpuPercent ?? -1) }
+            return $0.residentBytes == $1.residentBytes ? $0.id < $1.id : $0.residentBytes > $1.residentBytes
+        }.prefix(5))
     }
+
 }
 public struct MemoryUsage: Sendable, Codable {
     public let used: UInt64

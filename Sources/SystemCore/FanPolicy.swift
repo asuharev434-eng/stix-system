@@ -10,6 +10,13 @@ public enum FanPolicy {
         let floor = min(fan.maximum, max(fan.minimum, baseline, 2000))
         return (floor + (fan.maximum - floor) * fraction).rounded()
     }
+    public static func targetRPM(fan: FanReading, rpm: Double, baseline: Double, thermalState: Int) throws -> Double {
+        let floor = try target(fan: fan, fraction: 0, baseline: baseline, thermalState: thermalState)
+        guard rpm.isFinite, rpm >= floor, rpm <= fan.maximum else {
+            throw HardwareError.invalid("Допустимо \(Int(floor))–\(Int(fan.maximum)) об/мин")
+        }
+        return rpm.rounded()
+    }
     public static func expired(deadline: TimeInterval?, now: TimeInterval) -> Bool {
         guard let deadline else { return false }
         return now >= deadline
@@ -19,6 +26,7 @@ public enum FanPolicy {
 @objc public protocol FanServiceProtocol {
     func ping(reply: @escaping (String) -> Void)
     func manual(fanID: Int, fraction: Double, reply: @escaping (String?) -> Void)
+    func manualRPM(fanID: Int, rpm: Double, reply: @escaping (String?) -> Void)
     func renew(reply: @escaping (String?) -> Void)
     func automatic(fanID: Int, reply: @escaping (String?) -> Void)
 }

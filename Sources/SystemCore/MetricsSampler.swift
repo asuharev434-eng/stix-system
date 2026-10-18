@@ -4,6 +4,7 @@ import IOKit
 
 // Single owner, called on one background queue. No main-thread I/O.
 public final class MetricsSampler {
+    private let processSampler = ProcessSampler()
     private var previousCPU: [UInt64]?
     private var previousDisk: (UInt64, UInt64, TimeInterval)?
     public init() {}
@@ -12,7 +13,9 @@ public final class MetricsSampler {
         let cpu = cpuUsage()
         let memory = memoryUsage()
         let disk = diskUsage()
-        let processes = ProcessSampler.sample()
+        let allProcesses = processSampler.sample()
+        let candidates = ProcessUsage.top(allProcesses) + ProcessUsage.top(allProcesses, by: .cpu)
+        let processes = Array(Dictionary(candidates.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first }).values)
         if memory == nil { issues.append("Не удалось прочитать память") }
         if disk == nil { issues.append("Не удалось прочитать диск") }
         if processes.isEmpty { issues.append("Нет доступа к списку процессов") }

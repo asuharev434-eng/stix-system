@@ -1,5 +1,6 @@
 import AppKit
 import ServiceManagement
+import UserNotifications
 import SystemCore
 
 @MainActor enum DiagnosticCommands {
@@ -9,12 +10,15 @@ import SystemCore
             print(SMAppService.daemon(plistName: FanServiceIdentity.plistName).status.rawValue)
             return true
         }
+        let preferences = args.contains("--preferences-status")
+        let notificationTest = args.contains("--notification-smoke-test")
+        let rpmTest = args.contains("--fan-rpm-test")
         let unregister = args.contains("--unregister-fan-service")
         let register = args.contains("--register-fan-service")
         let smoke = args.contains("--fan-smoke-test")
         let lease = args.contains("--fan-lease-test")
         let individual = args.contains("--fan-individual-test")
-        guard unregister || register || smoke || lease || individual else { return false }
+        guard unregister || register || smoke || lease || individual || preferences || notificationTest || rpmTest else { return false }
         Task {
             try? await Task.sleep(for: .seconds(45))
             fputs("Diagnostic command timed out; any manual lease will expire automatically.\n", stderr)
@@ -22,6 +26,14 @@ import SystemCore
         }
         Task { @MainActor in
             do {
+                if preferences {
+                    let settings = await UNUserNotificationCenter.current().notificationSettings()
+                    print("Login item status: \(SMAppService.mainApp.status.rawValue)")
+                    print("Notifications authorization: \(settings.authorizationStatus.rawValue)")
+                    print("Alerts enabled: \(UserDefaults.standard.object(forKey: "healthAlerts") as? Bool ?? true)")
+                    exit(0)
+                }
+                if notificationTest { try await HealthNotifications().test(); print("PASS notification submitted"); exit(0) }
                 let service = SMAppService.daemon(plistName: FanServiceIdentity.plistName)
                 if unregister {
                     if service.status == .enabled {
@@ -42,6 +54,25 @@ import SystemCore
                 defer { client.disconnect() }
                 let pingError: String? = await withCheckedContinuation { continuation in client.ping { continuation.resume(returning: $0) } }
                 if let pingError { throw HardwareError.invalid(pingError) }
+                if rpmTest {
+                    let smc = SMC()
+                    let fans = smc.snapshot().fans
+                    guard !fans.isEmpty else { throw HardwareError.unavailable }
+                    for fan in fans {
+                        let error: String? = await withCheckedContinuation { continuation in
+                            client.manualRPM(fanID: fan.id, rpm: fan.maximum) { continuation.resume(returning: $0) }
+                        }
+                        if let error { throw HardwareError.invalid(error) }
+                    }
+                    let state = smc.snapshot()
+                    guard state.fans.allSatisfy({ $0.manual == true && abs(($0.target ?? 0) - $0.maximum) < 5 }) else { throw HardwareError.invalid("RPM read-back failed") }
+                    print("Exact RPM targets: \(state.fans.map { Int($0.target ?? 0) })")
+                    try await Task.sleep(for: .seconds(3))
+                    let error: String? = await withCheckedContinuation { continuation in client.automatic { continuation.resume(returning: $0) } }
+                    if let error { throw HardwareError.invalid(error) }
+                    guard smc.snapshot().fans.allSatisfy({ $0.manual == false }), smc.read("Ftst") == 0 else { throw HardwareError.invalid("Auto after RPM failed") }
+                    print("PASS exact RPM and automatic recovery"); exit(0)
+                }
                 if individual {
                     try await testIndividual(client: client)
                     print("PASS independent fans, partial Auto, renewable lease and full Auto")

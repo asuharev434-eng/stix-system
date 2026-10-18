@@ -45,6 +45,7 @@ private final class MonitorPanel: NSPanel {
             return event
         }
         show()
+        model.preferences.prepare()
     }
     @objc private func toggle() { if panel?.isVisible == true { panel?.orderOut(nil) } else { show() } }
     private func show() {
@@ -66,9 +67,11 @@ private final class MonitorPanel: NSPanel {
         guard let panel else { return }
         // A bounded scroll container makes even a short secondary display usable.
         panel.contentViewController = NSHostingController(rootView:
-            ScrollView(.vertical) { DashboardView(model: model) }
-                .scrollIndicators(.hidden).frame(width: frame.width, height: frame.height)
-                .background(.regularMaterial).clipShape(RoundedRectangle(cornerRadius: 17)))
+            PanelContents(model: model, maximumHeight: frame.height) { [weak panel] height in
+                let fitted = PanelPlacement.frame(content: CGSize(width: 382, height: height), screen: screen.frame,
+                    visible: screen.visibleFrame, safeTop: screen.safeAreaInsets.top, anchorX: anchor?.midX)
+                panel?.setFrame(fitted, display: true)
+            })
         panel.setFrame(frame, display: true)
         panel.makeKeyAndOrderFront(nil)
         NSApplication.shared.activate(ignoringOtherApps: true)

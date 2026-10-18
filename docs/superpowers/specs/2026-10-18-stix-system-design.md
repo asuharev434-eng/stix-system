@@ -16,3 +16,7 @@ User approved this design and added top-five RAM processes on 2026-10-18, explic
 - Separate component temperatures: CPU, GPU, memory proximity, NAND SSD, battery. Use model-specific sensor identities; aggregate component maxima; unavailable values are explicit.
 - Notch-safe placement: use the screen visible frame and top safe area, clamp horizontal position, and scroll on short displays.
 - Certificate issuance/import was explicitly approved. A Developer ID Application identity is installed in the local keychain; signing secrets remain outside the repository.
+
+## Version 1.1 approved scope
+
+Add login-at-startup, local sustained-health notifications with suppression, per-process CPU and CPU/RAM ranking. Retain both percent and absolute RPM fan settings and display actual/target RPM. Keep the dashboard minimal with settings behind a gear menu. Remove the lower material seam and unused fixed-height space. User explicitly requested local update and GitHub delivery; existing fan safety limits remain in force.

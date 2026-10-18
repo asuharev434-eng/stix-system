@@ -84,4 +84,16 @@ final class FanControllerTests: XCTestCase {
         XCTAssertEqual(hardware.writes.map(\.0), [0, 1])
     }
 
+    func testExactRPMIsPreservedThroughControllerAndValidatedBeforeWrites() throws {
+        let hardware = FakeFans(); hardware.fanCount = 2
+        let controller = FanController(hardware: hardware, thermal: { 0 })
+        XCTAssertThrowsError(try controller.manualRPM(rpm: 2999, owner: "a"))
+        XCTAssertTrue(hardware.writes.isEmpty)
+        try controller.manualRPM(rpm: 4567, owner: "a", fanID: 1)
+        XCTAssertEqual(hardware.writes.first?.0, 1)
+        XCTAssertEqual(hardware.writes.first?.1, 4567)
+        try controller.release(owner: "a")
+        XCTAssertEqual(hardware.restores, 1)
+    }
+
 }

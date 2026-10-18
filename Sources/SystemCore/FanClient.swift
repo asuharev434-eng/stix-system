@@ -25,10 +25,13 @@ import Security
         return connection?.remoteObjectProxyWithErrorHandler { error in errorHandler(error.localizedDescription) } as? FanServiceProtocol
     }
     public func ping(_ completion: @escaping (String?) -> Void) {
-        proxy(errorHandler: completion)?.ping { version in completion(version == "2" ? nil : "Несовместимая версия сервиса") }
+        proxy(errorHandler: completion)?.ping { version in completion(version == "3" ? nil : "Несовместимая версия сервиса") }
     }
     public func manual(fanID: Int? = nil, fraction: Double, completion: @escaping (String?) -> Void) {
         proxy(errorHandler: completion)?.manual(fanID: fanID ?? -1, fraction: fraction, reply: completion)
+    }
+    public func manualRPM(fanID: Int? = nil, rpm: Double, completion: @escaping (String?) -> Void) {
+        proxy(errorHandler: completion)?.manualRPM(fanID: fanID ?? -1, rpm: rpm, reply: completion)
     }
     public func renew(_ completion: @escaping (String?) -> Void) { proxy(errorHandler: completion)?.renew(reply: completion) }
     public func automatic(fanID: Int? = nil, _ completion: @escaping (String?) -> Void) { proxy(errorHandler: completion)?.automatic(fanID: fanID ?? -1, reply: completion) }

@@ -3,6 +3,8 @@ import SystemCore
 
 struct DashboardView: View {
     @ObservedObject var model: MonitorModel
+    @ObservedObject var preferences: AppPreferences
+    init(model: MonitorModel) { self.model = model; self.preferences = model.preferences }
     private let accent = Color(red: 0.28, green: 0.47, blue: 0.96)
     private func bytes(_ value: UInt64) -> String { ByteCountFormatter.string(fromByteCount: Int64(clamping: value), countStyle: .memory) }
     private func rate(_ value: Double?) -> String {
@@ -17,6 +19,14 @@ struct DashboardView: View {
                 Spacer()
                 Circle().fill(model.thermalColor).frame(width: 6, height: 6)
                 Text(model.thermalTitle).font(.system(size: 10)).foregroundStyle(.secondary)
+                Menu {
+                    Toggle("Запускать при входе", isOn: Binding(get: { preferences.launchAtLogin }, set: preferences.setLogin))
+                    Toggle("Уведомлять о проблемах", isOn: Binding(get: { preferences.alertsEnabled }, set: preferences.setAlerts))
+                    Button("Проверить уведомления") {
+                        Task { do { try await preferences.notifications.test() } catch { preferences.notice = error.localizedDescription } }
+                    }
+                } label: { Image(systemName: "gearshape").font(.system(size: 11)) }
+                .menuStyle(.borderlessButton).menuIndicator(.hidden).fixedSize().help("Настройки")
             }
             VStack(alignment: .leading, spacing: 12) {
                 HStack(alignment: .firstTextBaseline) {
@@ -67,16 +77,22 @@ struct DashboardView: View {
             temperatures
             VStack(alignment: .leading, spacing: 10) {
                 HStack {
-                    Text("БОЛЬШЕ ВСЕГО ПАМЯТИ").font(.system(size: 9, weight: .semibold)).tracking(1.1)
+                    Text("ПРОЦЕССЫ · ТОП 5").font(.system(size: 9, weight: .semibold)).tracking(1.1)
                     Spacer()
-                    Text("RAM").font(.system(size: 9))
-                }.foregroundStyle(.secondary)
+                    Button("CPU") { preferences.processSort = .cpu }
+                        .foregroundStyle(preferences.processSort == .cpu ? accent : .secondary).frame(width: 44, alignment: .trailing)
+                        .help("Сортировать по CPU; 100% — одно ядро")
+                    Button("RAM") { preferences.processSort = .memory }
+                        .foregroundStyle(preferences.processSort == .memory ? accent : .secondary).frame(width: 66, alignment: .trailing)
+                }.foregroundStyle(.secondary).buttonStyle(.plain).font(.system(size: 9))
                 if let processes = model.snapshot?.processes, !processes.isEmpty {
-                    ForEach(processes) { process in
+                    ForEach(ProcessUsage.top(processes, by: preferences.processSort)) { process in
                         HStack(spacing: 8) {
                             Text(process.name).lineLimit(1).truncationMode(.middle)
                             Spacer(minLength: 4)
-                            Text(bytes(process.residentBytes)).monospacedDigit().foregroundStyle(.secondary)
+                            Text(process.cpuPercent.map { String(format: "%.0f%%", $0) } ?? "—")
+                                .monospacedDigit().foregroundStyle(.secondary).frame(width: 44, alignment: .trailing)
+                            Text(bytes(process.residentBytes)).monospacedDigit().foregroundStyle(.secondary).frame(width: 66, alignment: .trailing)
                         }.font(.system(size: 11))
                             .help("\(process.name) · PID \(process.id) · резидентная память")
                     }
@@ -84,7 +100,7 @@ struct DashboardView: View {
             }.padding(.horizontal, 3)
             Divider()
             fans
-            if let error = model.message ?? model.hardware?.error ?? model.snapshot?.issues.first {
+            if let error = model.message ?? preferences.notice ?? model.hardware?.error ?? model.snapshot?.issues.first {
                 Text(error).font(.system(size: 10)).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
             }
             HStack {
@@ -94,7 +110,6 @@ struct DashboardView: View {
         }
         .padding(20)
         .frame(width: 382)
-        .background(.regularMaterial)
         .tint(accent)
     }
     private func label(_ title: String, icon: String) -> some View {
@@ -120,6 +135,10 @@ struct DashboardView: View {
                 label("Вентиляторы", icon: "fanblades")
                 Spacer()
                 if model.busy { ProgressView().controlSize(.mini) }
+                Picker("Единицы", selection: Binding(get: { preferences.rpmUnits }, set: model.setRPMUnits)) {
+                    Text("%").tag(false)
+                    Text("об/мин").tag(true)
+                }.pickerStyle(.segmented).labelsHidden().frame(width: 95).controlSize(.mini)
                 Toggle("Sync", isOn: Binding(get: { model.syncFans }, set: { model.setSync($0) }))
                     .toggleStyle(.switch).controlSize(.mini).font(.system(size: 11)).fixedSize()
                     .disabled(model.busy)
@@ -155,7 +174,8 @@ struct DashboardView: View {
     private func rpm(_ fan: FanReading, named: Bool) -> some View {
         HStack(spacing: 5) {
             Text(named ? "Вентилятор \(fan.id + 1)" : "\(fan.id + 1)").foregroundStyle(.secondary)
-            Text("\(Int(fan.current.rounded()))").monospacedDigit()
+            Text("\(Int(fan.current.rounded())) → \(Int((fan.target ?? fan.current).rounded()))").monospacedDigit()
+                .help("Текущие → заданные обороты")
             Text("об/мин").foregroundStyle(.tertiary)
         }.font(.system(size: 11))
     }
@@ -168,11 +188,18 @@ struct DashboardView: View {
             Button("Авто") { model.automatic(id: id) }.buttonStyle(.bordered).tint(isManual ? .secondary : accent)
             Button(isManual ? "Применить" : "Вручную") { model.applyManual(id: id) }
                 .buttonStyle(.bordered).tint(isManual ? accent : .secondary)
+            if preferences.rpmUnits {
+                Slider(value: Binding(get: { model.selectedRPM(id) }, set: { value in
+                    if let id { model.fanRPMs[id] = value } else { model.commonRPM = value }
+                }), in: model.rpmBounds(id), step: 1).accessibilityLabel("Заданные обороты")
+                Text("\(Int(model.selectedRPM(id)))").font(.system(size: 10)).monospacedDigit().frame(width: 36, alignment: .trailing)
+            } else {
             Slider(value: binding, in: 0...1)
                 .accessibilityLabel(id.map { "Охлаждение вентилятора \($0 + 1)" } ?? "Общее охлаждение вентиляторов")
-                .help("От безопасного уровня до максимума. Нажми Вручную или Применить.")
+                .help("0% — нижняя безопасная граница, 100% — аппаратный максимум. Нажми Вручную или Применить.")
             Text("\(Int((binding.wrappedValue * 100).rounded()))%")
                 .font(.system(size: 10)).monospacedDigit().frame(width: 30, alignment: .trailing)
+            }
         }.controlSize(.small).disabled(model.busy)
     }
 

@@ -30,6 +30,16 @@ public final class FanController {
         if recoveryNeeded { deadline = 0 }
     }
     public func manual(fraction: Double, owner client: String, fanID: Int? = nil) throws {
+        try apply(owner: client, fanID: fanID) { fan, baseline, thermal in
+            try FanPolicy.target(fan: fan, fraction: fraction, baseline: baseline, thermalState: thermal)
+        }
+    }
+    public func manualRPM(rpm: Double, owner client: String, fanID: Int? = nil) throws {
+        try apply(owner: client, fanID: fanID) { fan, baseline, thermal in
+            try FanPolicy.targetRPM(fan: fan, rpm: rpm, baseline: baseline, thermalState: thermal)
+        }
+    }
+    private func apply(owner client: String, fanID: Int?, target: (FanReading, Double, Int) throws -> Double) throws {
         guard owner == nil || owner == client else { throw HardwareError.invalid("Управление занято другим экземпляром приложения") }
         guard !(active && owner == nil) else { throw HardwareError.invalid("Ожидается восстановление автоматического режима") }
         let reading = hardware.snapshot()
@@ -43,7 +53,7 @@ public final class FanController {
         if let fanID, !reading.fans.contains(where: { $0.id == fanID }) { throw HardwareError.invalid("Некорректный вентилятор") }
         let selected = reading.fans.filter { fanID == nil || $0.id == fanID }
         let targets = try selected.map { fan in
-            (fan.id, try FanPolicy.target(fan: fan, fraction: fraction, baseline: baseline[fan.id] ?? fan.current, thermalState: thermal()))
+            (fan.id, try target(fan, baseline[fan.id] ?? fan.current, thermal()))
         }
         // Persist recovery intent before touching firmware, including its diagnostic unlock.
         try markActive()
