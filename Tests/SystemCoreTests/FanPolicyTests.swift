@@ -2,10 +2,10 @@ import XCTest
 @testable import SystemCore
 final class FanPolicyTests: XCTestCase {
     let fan = FanReading(id: 0, current: 2300, minimum: 1200, maximum: 6000, target: nil, manual: false)
-    func testTargetsUseFullHardwareBounds() throws {
-        XCTAssertEqual(try FanPolicy.target(fan: fan, fraction: 0, thermalState: 0), 1200)
+    func testTargetsUseZeroThroughMaximum() throws {
+        XCTAssertEqual(try FanPolicy.target(fan: fan, fraction: 0, thermalState: 0), 0)
         XCTAssertEqual(try FanPolicy.target(fan: fan, fraction: 1, thermalState: 0), 6000)
-        XCTAssertEqual(try FanPolicy.target(fan: fan, fraction: 0, thermalState: 0), 1200)
+        XCTAssertEqual(try FanPolicy.target(fan: fan, fraction: 0.1, thermalState: 0), 600)
     }
     func testInvalidAndHotRequestsRejected() {
         for fraction in [Double.nan, .infinity, -0.1, 1.1] {

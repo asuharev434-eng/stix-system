@@ -23,11 +23,37 @@ private final class FakeFans: FanHardware {
     }
 }
 final class FanControllerTests: XCTestCase {
-    func testHardwareMinimumIsAvailableBelowCurrentRPM() throws {
+    func testStopUsesZeroTargetAndKeepsOtherFanIndependent() throws {
+        let hardware = FakeFans(); hardware.fanCount = 2
+        let controller = FanController(hardware: hardware, thermal: { 0 })
+        try controller.manualRPM(rpm: 0, owner: "a", fanID: 0)
+        XCTAssertEqual(hardware.writes.count, 1)
+        XCTAssertEqual(hardware.writes.first?.0, 0)
+        XCTAssertEqual(hardware.writes.first?.1, 0)
+        XCTAssertTrue(controller.active)
+        hardware.cpu = 95
+        try controller.tick()
+        XCTAssertFalse(controller.active)
+        XCTAssertEqual(hardware.restores, 1)
+    }
+    func testStopSyncAndHotStopRejection() throws {
+        let hardware = FakeFans(); hardware.fanCount = 2
+        let controller = FanController(hardware: hardware, thermal: { 0 })
+        try controller.manualRPM(rpm: 0, owner: "a")
+        XCTAssertEqual(hardware.writes.map(\.0), [0, 1])
+        XCTAssertTrue(hardware.writes.allSatisfy { $0.1 == 0 })
+        try controller.restore()
+        hardware.gpu = 95
+        XCTAssertThrowsError(try controller.manualRPM(rpm: 0, owner: "a"))
+        XCTAssertEqual(hardware.writes.count, 2)
+    }
+    func testArbitraryRPMBelowReportedMinimumAndCurrentIsAvailable() throws {
         let hardware = FakeFans()
         let controller = FanController(hardware: hardware, thermal: { 0 })
         try controller.manual(fraction: 0, owner: "a")
-        XCTAssertEqual(hardware.writes.last?.1, 1200)
+        XCTAssertEqual(hardware.writes.last?.1, 0)
+        try controller.manualRPM(rpm: 700, owner: "a")
+        XCTAssertEqual(hardware.writes.last?.1, 700)
         try controller.manualRPM(rpm: 1200, owner: "a")
         XCTAssertEqual(hardware.writes.last?.1, 1200)
     }
@@ -53,7 +79,7 @@ final class FanControllerTests: XCTestCase {
         let hardware = FakeFans(); var time = 0.0
         let controller = FanController(hardware: hardware, clock: { time }, thermal: { 0 })
         try controller.manual(fraction: 0.5, owner: "a")
-        XCTAssertEqual(hardware.writes.first?.1, 3600)
+        XCTAssertEqual(hardware.writes.first?.1, 3000)
         time = 11; try controller.tick(); XCTAssertEqual(hardware.restores, 0)
         time = 12; try controller.tick(); XCTAssertEqual(hardware.restores, 1)
         XCTAssertFalse(controller.active)
@@ -115,7 +141,7 @@ final class FanControllerTests: XCTestCase {
     func testExactRPMIsPreservedThroughControllerAndValidatedBeforeWrites() throws {
         let hardware = FakeFans(); hardware.fanCount = 2
         let controller = FanController(hardware: hardware, thermal: { 0 })
-        XCTAssertThrowsError(try controller.manualRPM(rpm: 1199, owner: "a"))
+        XCTAssertThrowsError(try controller.manualRPM(rpm: -1, owner: "a"))
         XCTAssertTrue(hardware.writes.isEmpty)
         try controller.manualRPM(rpm: 4567, owner: "a", fanID: 1)
         XCTAssertEqual(hardware.writes.first?.0, 1)

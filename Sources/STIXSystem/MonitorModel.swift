@@ -152,7 +152,7 @@ private actor MetricsWorker {
     }
     func rpmBounds(_ id: Int?) -> ClosedRange<Double> {
         let fans = (hardware?.fans ?? []).filter { id == nil || $0.id == id }
-        let lower = fans.map(\.minimum).max() ?? 0
+        let lower = 0.0
         let upper = max(lower, fans.map(\.maximum).min() ?? 1)
         return lower...upper
     }

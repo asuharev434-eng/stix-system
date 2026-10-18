@@ -14,7 +14,7 @@ public enum FanPolicy {
               fan.minimum.isFinite, fan.maximum.isFinite, fan.maximum > fan.minimum,
               fan.minimum >= 0, fan.maximum <= 20000 else { throw HardwareError.invalid("Некорректные параметры вентилятора") }
         guard thermalState < 2 else { throw HardwareError.invalid("Mac нагрет — управление возвращено системе") }
-        let floor = fan.minimum
+        let floor = 0.0
         return (floor + (fan.maximum - floor) * fraction).rounded()
     }
     public static func targetRPM(fan: FanReading, rpm: Double, thermalState: Int) throws -> Double {

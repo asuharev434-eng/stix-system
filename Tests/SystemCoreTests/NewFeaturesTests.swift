@@ -44,7 +44,7 @@ final class NewFeaturesTests: XCTestCase {
     func testExplicitRPMValidationRejectsUnsafeOrNonfiniteTargets() throws {
         let fan = FanReading(id: 0, current: 3000, minimum: 1200, maximum: 6000, target: nil, manual: false)
         XCTAssertEqual(try FanPolicy.targetRPM(fan: fan, rpm: 4500, thermalState: 0), 4500)
-        for rpm in [Double.nan, .infinity, 1199, 6001] {
+        for rpm in [Double.nan, .infinity, -1, 6001] {
             XCTAssertThrowsError(try FanPolicy.targetRPM(fan: fan, rpm: rpm, thermalState: 0))
         }
         XCTAssertThrowsError(try FanPolicy.targetRPM(fan: fan, rpm: 4500, thermalState: 2))

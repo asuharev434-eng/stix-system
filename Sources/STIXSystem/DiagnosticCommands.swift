@@ -12,14 +12,16 @@ import SystemCore
         }
         let preferences = args.contains("--preferences-status")
         let notificationTest = args.contains("--notification-smoke-test")
+        let stopTest = args.contains("--fan-stop-test")
         let rangeTest = args.contains("--fan-range-test")
         let rpmTest = args.contains("--fan-rpm-test") || rangeTest
+        let reload = args.contains("--reload-fan-service")
         let unregister = args.contains("--unregister-fan-service")
         let register = args.contains("--register-fan-service")
         let smoke = args.contains("--fan-smoke-test")
         let lease = args.contains("--fan-lease-test")
         let individual = args.contains("--fan-individual-test")
-        guard unregister || register || smoke || lease || individual || preferences || notificationTest || rpmTest else { return false }
+        guard reload || unregister || register || smoke || lease || individual || preferences || notificationTest || rpmTest || stopTest else { return false }
         Task {
             try? await Task.sleep(for: .seconds(45))
             fputs("Diagnostic command timed out; any manual lease will expire automatically.\n", stderr)
@@ -36,6 +38,14 @@ import SystemCore
                 }
                 if notificationTest { try await HealthNotifications().test(); print("PASS notification submitted"); exit(0) }
                 let service = SMAppService.daemon(plistName: FanServiceIdentity.plistName)
+                if reload {
+                    // Upgrade recovery: preserve the root journal and let the new
+                    // service restore the hardware before accepting manual control.
+                    try await service.unregister()
+                    try service.register()
+                    print("Reloaded service, status: \(service.status.rawValue)")
+                    exit(0)
+                }
                 if unregister {
                     if service.status == .enabled {
                         let client = FanClient()
@@ -55,6 +65,29 @@ import SystemCore
                 defer { client.disconnect() }
                 let pingError: String? = await withCheckedContinuation { continuation in client.ping { continuation.resume(returning: $0) } }
                 if let pingError { throw HardwareError.invalid(pingError) }
+                if stopTest {
+                    let smc = SMC()
+                    let fans = smc.snapshot().fans
+                    guard !fans.isEmpty else { throw HardwareError.unavailable }
+                    let stopError: String? = await withCheckedContinuation { continuation in
+                        client.manualRPM(rpm: 0) { continuation.resume(returning: $0) }
+                    }
+                    if let stopError { throw HardwareError.invalid(stopError) }
+                    var stopped = false
+                    for _ in 0..<12 {
+                        let reading = smc.snapshot()
+                        print("Stop read-back: \(reading.fans.map { "fan\($0.id): current=\(Int($0.current)), target=\(Int($0.target ?? -1)), manual=\($0.manual == true)" })")
+                        if reading.fans.count == fans.count && reading.fans.allSatisfy({ $0.manual == true && $0.target == 0 && $0.current < 100 }) { stopped = true; break }
+                        try await Task.sleep(for: .seconds(1))
+                        let error: String? = await withCheckedContinuation { continuation in client.renew { continuation.resume(returning: $0) } }
+                        if let error { throw HardwareError.invalid(error) }
+                    }
+                    let error: String? = await withCheckedContinuation { continuation in client.automatic { continuation.resume(returning: $0) } }
+                    if let error { throw HardwareError.invalid(error) }
+                    guard smc.snapshot().fans.allSatisfy({ $0.manual == false }), smc.read("Ftst") == 0 else { throw HardwareError.invalid("Auto after stop failed") }
+                    guard stopped else { throw HardwareError.invalid("Zero target accepted, but actual fan stop was not confirmed; restored Auto") }
+                    print("PASS actual fan stop and automatic recovery"); exit(0)
+                }
                 if rpmTest {
                     let smc = SMC()
                     let fans = smc.snapshot().fans
@@ -76,7 +109,7 @@ import SystemCore
                                 client.manual(fraction: fraction) { continuation.resume(returning: $0) }
                             }
                             if let error { throw HardwareError.invalid(error) }
-                            guard smc.snapshot().fans.allSatisfy({ $0.manual == true && abs(($0.target ?? -1) - (fraction == 0 ? $0.minimum : $0.maximum)) < 5 }) else { throw HardwareError.invalid("Percentage endpoint read-back failed") }
+                            guard smc.snapshot().fans.allSatisfy({ $0.manual == true && abs(($0.target ?? -1) - (fraction == 0 ? 0 : $0.maximum)) < 5 }) else { throw HardwareError.invalid("Percentage endpoint read-back failed") }
                             print("Sync \(Int(fraction * 100))% endpoint confirmed")
                         }
                     }

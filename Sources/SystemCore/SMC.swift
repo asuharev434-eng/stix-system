@@ -67,7 +67,7 @@ public final class SMC {
         #endif
         var confirmed = false
         for _ in 0..<60 {
-            try write(key, 1)
+            if read(key) != 1 { try write(key, 1) }
             try write("F\(id)Tg", rpm)
             Thread.sleep(forTimeInterval: 0.1)
             if read(key) == 1, let target = read("F\(id)Tg"), abs(target - rpm) < 5 {
@@ -79,33 +79,45 @@ public final class SMC {
         }
     }
 
-    public func restoreAutomatic(id: Int) throws {
-        guard snapshot().fans.contains(where: { $0.id == id }) else { throw HardwareError.invalid("Некорректный вентилятор") }
-        try write(modeKey(id), 0)
-        try write("F\(id)Tg", 0)
-        for _ in 0..<40 {
-            if let mode = read(modeKey(id)), mode == 0 || mode == 3 { return }
+    private func restartStoppedFans(_ fans: [FanReading]) throws {
+        // Start all stopped fans before releasing any mode. Firmware can take
+        // several seconds to accept a mode transition after a zero target.
+        for fan in fans where fan.manual == true && (fan.target == 0 || fan.current < 100) {
+            try setManual(id: fan.id, rpm: fan.maximum)
+        }
+    }
+    private func releaseModes(_ fans: [FanReading]) throws {
+        var lastError: Error?
+        for _ in 0..<120 {
+            for fan in fans {
+                if let mode = read(modeKey(fan.id)), mode == 0 || mode == 3 { continue }
+                do { try write(modeKey(fan.id), 0, attempts: 1) }
+                catch { lastError = error }
+            }
+            if fans.allSatisfy({ fan in
+                guard let mode = read(modeKey(fan.id)) else { return false }
+                return mode == 0 || mode == 3
+            }) { return }
             Thread.sleep(forTimeInterval: 0.1)
         }
-        throw HardwareError.invalid("Вентилятор \(id + 1) не подтвердил Авто")
+        throw lastError ?? HardwareError.invalid("SMC не подтвердил автоматический режим")
+    }
+    public func restoreAutomatic(id: Int) throws {
+        guard let fan = snapshot().fans.first(where: { $0.id == id }) else { throw HardwareError.invalid("Некорректный вентилятор") }
+        try restartStoppedFans([fan])
+        try releaseModes([fan])
     }
     public func restoreAutomatic() throws {
-        let snapshot = snapshot()
-        guard !snapshot.fans.isEmpty else { throw HardwareError.unavailable }
-        var firstError: Error?
-        for fan in snapshot.fans {
-            do { try write(modeKey(fan.id), 0); try write("F\(fan.id)Tg", 0) }
-            catch { if firstError == nil { firstError = error } }
-        }
-        if read("Ftst") != nil {
-            do { try write("Ftst", 0) } catch { if firstError == nil { firstError = error } }
-        }
-        // Actual mode read-back, not just a successful write call.
+        let fans = snapshot().fans
+        guard !fans.isEmpty else { throw HardwareError.unavailable }
+        try restartStoppedFans(fans)
+        try releaseModes(fans)
+        if read("Ftst") != nil { try write("Ftst", 0) }
         for _ in 0..<40 {
-            let after = self.snapshot()
-            if after.fans.count == snapshot.fans.count && after.fans.allSatisfy({ $0.manual == false }) && (read("Ftst") ?? 0) == 0 { return }
+            let after = snapshot()
+            if after.fans.count == fans.count && after.fans.allSatisfy({ $0.manual == false }) && (read("Ftst") ?? 0) == 0 { return }
             Thread.sleep(forTimeInterval: 0.1)
         }
-        throw firstError ?? HardwareError.invalid("SMC не подтвердил автоматический режим")
+        throw HardwareError.invalid("SMC не подтвердил автоматический режим")
     }
 }

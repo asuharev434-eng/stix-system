@@ -153,7 +153,7 @@ struct DashboardView: View {
                     ForEach(fans) { fan in
                         VStack(alignment: .leading, spacing: 6) {
                             HStack { rpm(fan, named: true); Spacer()
-                                Text(fan.manual == true ? "Вручную" : "Авто").font(.system(size: 9)).foregroundStyle(.secondary)
+                                Text(fan.manual == true ? (fan.target == 0 ? (fan.current < 100 ? "Остановлен" : "Останавливается…") : "Вручную") : "Авто").font(.system(size: 9)).foregroundStyle(.secondary)
                             }
                             if model.serviceReady { fanControls(id: fan.id) }
                         }
@@ -196,7 +196,7 @@ struct DashboardView: View {
             } else {
             Slider(value: binding, in: 0...1)
                 .accessibilityLabel(id.map { "Охлаждение вентилятора \($0 + 1)" } ?? "Общее охлаждение вентиляторов")
-                .help("0% — аппаратный минимум, 100% — аппаратный максимум. Нажми Вручную или Применить.")
+                .help("0% — остановка, 100% — аппаратный максимум. Нажми Вручную или Применить.")
             Text("\(Int((binding.wrappedValue * 100).rounded()))%")
                 .font(.system(size: 10)).monospacedDigit().frame(width: 30, alignment: .trailing)
             }
