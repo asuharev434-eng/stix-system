@@ -15,7 +15,6 @@ private actor MetricsWorker {
     let preferences = AppPreferences()
     @Published var fanRPMs: [Int: Double] = [:]
     @Published var commonRPM: Double?
-    private var fanBaselines: [Int: Double] = [:]
     @Published var snapshot: SystemSnapshot?
     @Published var hardware: ThermalReading?
     @Published var cpuHistory: [Double] = []
@@ -50,7 +49,7 @@ private actor MetricsWorker {
                     Task { @MainActor in
                         guard let self else { return }
                         self.renewing = false
-                        if let error { self.manualFanIDs = []; self.fanBaselines = [:]; self.message = error; self.logger.error("Lease: \(error, privacy: .public)") }
+                        if let error { self.manualFanIDs = []; self.message = error; self.logger.error("Lease: \(error, privacy: .public)") }
                     }
                 }
             }
@@ -96,7 +95,6 @@ private actor MetricsWorker {
         guard serviceReady, !busy else { return }
         startOperation()
         let operation = operationID
-        if !manual { fanBaselines = Dictionary(uniqueKeysWithValues: (hardware?.fans ?? []).map { ($0.id, $0.current) }) }
         let completion: (String?) -> Void = { [weak self] error in
             Task { @MainActor in
                 guard let self, self.operationID == operation else { return }
@@ -121,7 +119,6 @@ private actor MetricsWorker {
                 guard let self, self.operationID == operation else { return }
                 self.busy = false; self.message = error
                 if error == nil { if let id { self.manualFanIDs.remove(id) } else { self.manualFanIDs = [] } }
-                if !self.manual { self.fanBaselines = [:] }
                 self.sample()
             }
         }
@@ -155,8 +152,8 @@ private actor MetricsWorker {
     }
     func rpmBounds(_ id: Int?) -> ClosedRange<Double> {
         let fans = (hardware?.fans ?? []).filter { id == nil || $0.id == id }
-        let lower = fans.map { min($0.maximum, max($0.minimum, 2000, fanBaselines[$0.id] ?? $0.current)) }.max() ?? 2000
-        let upper = max(lower, fans.map(\.maximum).min() ?? 7826)
+        let lower = fans.map(\.minimum).max() ?? 0
+        let upper = max(lower, fans.map(\.maximum).min() ?? 1)
         return lower...upper
     }
     func selectedRPM(_ id: Int?) -> Double {
@@ -176,7 +173,7 @@ private actor MetricsWorker {
         NSApplication.shared.terminate(nil)
     }
     var thermalTitle: String {
-        if let temperature = hardware?.temperature, temperature >= 100 { return "Высокая температура" }
+        if let hardware, FanPolicy.overheated(hardware, thermalState: snapshot?.thermalState ?? 0) { return "Высокая температура" }
         if let temperature = hardware?.temperature, temperature >= 90 { return "Температура повышена" }
         switch snapshot?.thermalState {
         case 0: return "Нагрев в норме"
@@ -187,7 +184,7 @@ private actor MetricsWorker {
         }
     }
     var thermalColor: Color {
-        if let temperature = hardware?.temperature, temperature >= 100 { return .red }
+        if let hardware, FanPolicy.overheated(hardware, thermalState: snapshot?.thermalState ?? 0) { return .red }
         if let temperature = hardware?.temperature, temperature >= 90 { return .orange }
         switch snapshot?.thermalState { case 0: return .green; case 1: return .orange; case 2, 3: return .red; default: return .secondary }
     }

@@ -163,7 +163,7 @@ struct DashboardView: View {
                     Button(model.needsApproval ? "Разрешить в настройках macOS…" : "Включить управление…") { model.enableService() }
                         .buttonStyle(.bordered).controlSize(.small)
                 } else {
-                    Text("При нагреве или потере связи — обратно в Авто")
+                    Text("CPU/GPU ≥95 °C или потеря связи — обратно в Авто")
                         .font(.system(size: 9)).foregroundStyle(.tertiary)
                 }
             } else {
@@ -196,7 +196,7 @@ struct DashboardView: View {
             } else {
             Slider(value: binding, in: 0...1)
                 .accessibilityLabel(id.map { "Охлаждение вентилятора \($0 + 1)" } ?? "Общее охлаждение вентиляторов")
-                .help("0% — нижняя безопасная граница, 100% — аппаратный максимум. Нажми Вручную или Применить.")
+                .help("0% — аппаратный минимум, 100% — аппаратный максимум. Нажми Вручную или Применить.")
             Text("\(Int((binding.wrappedValue * 100).rounded()))%")
                 .font(.system(size: 10)).monospacedDigit().frame(width: 30, alignment: .trailing)
             }

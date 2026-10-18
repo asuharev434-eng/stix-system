@@ -1,17 +1,24 @@
 import Foundation
 
 public enum FanPolicy {
+    // Application protection threshold, not an Apple hardware specification.
+    public static let overheatCelsius: Double = 95
+    public static func overheated(_ reading: ThermalReading, thermalState: Int) -> Bool {
+        if thermalState >= 2 { return true }
+        let chipTemperatures = reading.temperatures.filter { $0.id == "cpu" || $0.id == "gpu" }.compactMap(\.celsius)
+        return (chipTemperatures + [reading.temperature].compactMap { $0 }).contains { $0.isFinite && $0 >= overheatCelsius }
+    }
     public static let leaseDuration: TimeInterval = 12
-    public static func target(fan: FanReading, fraction: Double, baseline: Double, thermalState: Int) throws -> Double {
-        guard fraction.isFinite, (0...1).contains(fraction), baseline.isFinite, baseline >= 0,
+    public static func target(fan: FanReading, fraction: Double, thermalState: Int) throws -> Double {
+        guard fraction.isFinite, (0...1).contains(fraction),
               fan.minimum.isFinite, fan.maximum.isFinite, fan.maximum > fan.minimum,
               fan.minimum >= 0, fan.maximum <= 20000 else { throw HardwareError.invalid("Некорректные параметры вентилятора") }
         guard thermalState < 2 else { throw HardwareError.invalid("Mac нагрет — управление возвращено системе") }
-        let floor = min(fan.maximum, max(fan.minimum, baseline, 2000))
+        let floor = fan.minimum
         return (floor + (fan.maximum - floor) * fraction).rounded()
     }
-    public static func targetRPM(fan: FanReading, rpm: Double, baseline: Double, thermalState: Int) throws -> Double {
-        let floor = try target(fan: fan, fraction: 0, baseline: baseline, thermalState: thermalState)
+    public static func targetRPM(fan: FanReading, rpm: Double, thermalState: Int) throws -> Double {
+        let floor = try target(fan: fan, fraction: 0, thermalState: thermalState)
         guard rpm.isFinite, rpm >= floor, rpm <= fan.maximum else {
             throw HardwareError.invalid("Допустимо \(Int(floor))–\(Int(fan.maximum)) об/мин")
         }

@@ -12,7 +12,8 @@ import SystemCore
         }
         let preferences = args.contains("--preferences-status")
         let notificationTest = args.contains("--notification-smoke-test")
-        let rpmTest = args.contains("--fan-rpm-test")
+        let rangeTest = args.contains("--fan-range-test")
+        let rpmTest = args.contains("--fan-rpm-test") || rangeTest
         let unregister = args.contains("--unregister-fan-service")
         let register = args.contains("--register-fan-service")
         let smoke = args.contains("--fan-smoke-test")
@@ -58,6 +59,27 @@ import SystemCore
                     let smc = SMC()
                     let fans = smc.snapshot().fans
                     guard !fans.isEmpty else { throw HardwareError.unavailable }
+                    print("Hardware ranges: \(fans.map { "fan\($0.id)=\(Int($0.minimum))–\(Int($0.maximum)), current=\(Int($0.current))" })")
+                    print("Temperatures: \(smc.snapshot().temperatures.compactMap { t in t.celsius.map { "\(t.id)=\($0)" } })")
+                    if rangeTest {
+                        for fan in fans {
+                            let error: String? = await withCheckedContinuation { continuation in
+                                client.manualRPM(fanID: fan.id, rpm: fan.minimum) { continuation.resume(returning: $0) }
+                            }
+                            if let error { throw HardwareError.invalid(error) }
+                            guard let actual = smc.snapshot().fans.first(where: { $0.id == fan.id }), actual.manual == true,
+                                  abs((actual.target ?? -1) - fan.minimum) < 5 else { throw HardwareError.invalid("Hardware minimum read-back failed") }
+                            print("Fan \(fan.id) exact minimum confirmed: \(Int(fan.minimum)) RPM")
+                        }
+                        for fraction in [1.0, 0.0] {
+                            let error: String? = await withCheckedContinuation { continuation in
+                                client.manual(fraction: fraction) { continuation.resume(returning: $0) }
+                            }
+                            if let error { throw HardwareError.invalid(error) }
+                            guard smc.snapshot().fans.allSatisfy({ $0.manual == true && abs(($0.target ?? -1) - (fraction == 0 ? $0.minimum : $0.maximum)) < 5 }) else { throw HardwareError.invalid("Percentage endpoint read-back failed") }
+                            print("Sync \(Int(fraction * 100))% endpoint confirmed")
+                        }
+                    }
                     for fan in fans {
                         let error: String? = await withCheckedContinuation { continuation in
                             client.manualRPM(fanID: fan.id, rpm: fan.maximum) { continuation.resume(returning: $0) }
@@ -71,7 +93,7 @@ import SystemCore
                     let error: String? = await withCheckedContinuation { continuation in client.automatic { continuation.resume(returning: $0) } }
                     if let error { throw HardwareError.invalid(error) }
                     guard smc.snapshot().fans.allSatisfy({ $0.manual == false }), smc.read("Ftst") == 0 else { throw HardwareError.invalid("Auto after RPM failed") }
-                    print("PASS exact RPM and automatic recovery"); exit(0)
+                    print(rangeTest ? "PASS hardware minimum, 0/100% Sync, exact maximum and automatic recovery" : "PASS exact RPM and automatic recovery"); exit(0)
                 }
                 if individual {
                     try await testIndividual(client: client)
