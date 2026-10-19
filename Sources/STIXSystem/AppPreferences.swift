@@ -5,6 +5,9 @@ import UserNotifications
 import SystemCore
 
 @MainActor final class AppPreferences: ObservableObject {
+    @Published var menuMetric = MenuMetric(rawValue: UserDefaults.standard.string(forKey: "menuMetric") ?? "icon") ?? .icon {
+        didSet { UserDefaults.standard.set(menuMetric.rawValue, forKey: "menuMetric") }
+    }
     @Published var processSort = ProcessSort(rawValue: UserDefaults.standard.string(forKey: "processSort") ?? "memory") ?? .memory {
         didSet { UserDefaults.standard.set(processSort.rawValue, forKey: "processSort") }
     }

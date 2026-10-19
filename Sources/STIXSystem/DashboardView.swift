@@ -1,10 +1,13 @@
 import SwiftUI
 import SystemCore
 
+private enum HistorySelection: Equatable { case memory, temperature(String) }
+
 struct DashboardView: View {
     @ObservedObject var model: MonitorModel
     @ObservedObject var preferences: AppPreferences
     init(model: MonitorModel) { self.model = model; self.preferences = model.preferences }
+    @State private var historySelection: HistorySelection?
     private let accent = Color(red: 0.28, green: 0.47, blue: 0.96)
     private func swapRate(_ value: Double?) -> String {
         value.map { String(format: "%.2f", $0 / 1_048_576) } ?? "—"
@@ -18,7 +21,7 @@ struct DashboardView: View {
         return ByteCountFormatter.string(fromByteCount: Int64(min(value, Double(Int64.max / 2))), countStyle: .file) + "/с"
     }
     var body: some View {
-        VStack(alignment: .leading, spacing: 14) {
+        VStack(alignment: .leading, spacing: 12) {
             HStack(spacing: 9) {
                 Image(systemName: "waveform.path").font(.system(size: 18, weight: .semibold)).foregroundStyle(accent)
                 Text("STIX System").font(.system(size: 16, weight: .semibold))
@@ -26,6 +29,14 @@ struct DashboardView: View {
                 Circle().fill(model.thermalColor).frame(width: 6, height: 6)
                 Text(model.thermalTitle).font(.system(size: 10)).foregroundStyle(.secondary)
                 Menu {
+                    Menu("В строке меню") {
+                        ForEach(MenuMetric.allCases, id: \.self) { metric in
+                            Button { preferences.menuMetric = metric } label: {
+                                if preferences.menuMetric == metric { Label(metric.title, systemImage: "checkmark") }
+                                else { Text(metric.title) }
+                            }
+                        }
+                    }
                     Toggle("Запускать при входе", isOn: Binding(get: { preferences.launchAtLogin }, set: preferences.setLogin))
                     Toggle("Уведомлять о проблемах", isOn: Binding(get: { preferences.alertsEnabled }, set: preferences.setAlerts))
                     Button("Проверить уведомления") {
@@ -34,7 +45,7 @@ struct DashboardView: View {
                 } label: { Image(systemName: "gearshape").font(.system(size: 11)) }
                 .menuStyle(.borderlessButton).menuIndicator(.hidden).fixedSize().help("Настройки")
             }
-            VStack(alignment: .leading, spacing: 12) {
+            VStack(alignment: .leading, spacing: 8) {
                 HStack(spacing: 14) {
                     utilization("CPU", icon: "cpu", value: model.snapshot?.cpu, history: model.cpuHistory, color: accent)
                     Divider().frame(height: 64)
@@ -43,7 +54,13 @@ struct DashboardView: View {
                 }
                 Divider()
                 HStack {
-                    label("Память", icon: "memorychip")
+                    Button { toggleHistory(.memory) } label: {
+                        HStack(spacing: 4) {
+                            label("Память", icon: "memorychip")
+                            Image(systemName: historySelection == .memory ? "chevron.down" : "chevron.right")
+                                .font(.system(size: 7)).foregroundStyle(.tertiary)
+                        }
+                    }.buttonStyle(.plain).help("История RAM за последние 15 минут")
                     Spacer()
                     if let memory = model.snapshot?.memory {
                         Text("\(bytes(memory.used)) / \(bytes(memory.total))").monospacedDigit()
@@ -85,6 +102,9 @@ struct DashboardView: View {
                             .monospacedDigit()
                     }.font(.system(size: 10)).foregroundStyle(.secondary)
                         .help("Чтение ↓ и запись ↑ страниц swap за последний интервал. Логический объём страниц, не физическая скорость SSD. Значение не измеряет задержки приложений.")
+                    if historySelection == .memory {
+                        history(model.history.memory.points, title: "RAM", range: "0–\(gigabytes(memory.total))", ceiling: 1)
+                    }
                 }
                 Divider()
                 HStack {
@@ -99,6 +119,21 @@ struct DashboardView: View {
                     Text("Запись  \(rate(model.snapshot?.disk?.writeBytesPerSecond))")
                 }.font(.system(size: 10)).monospacedDigit().foregroundStyle(.secondary)
                     .help("Скорость чтения и записи всех физических дисков Mac")
+                HStack {
+                    label("Сеть", icon: "network")
+                    Spacer()
+                    Text("↓ \(rate(model.snapshot?.network?.download))  ↑ \(rate(model.snapshot?.network?.upload))")
+                        .monospacedDigit().foregroundStyle(.secondary)
+                }.font(.system(size: 10))
+                    .help("Входящий ↓ и исходящий ↑ трафик Wi-Fi/Ethernet")
+                if let battery = model.snapshot?.battery {
+                    HStack {
+                        label("Батарея", icon: battery.state == .charging ? "battery.100.bolt" : "battery.100")
+                        Spacer()
+                        Text("\(Int((battery.fraction * 100).rounded()))% · \(batteryState(battery.state))")
+                            .monospacedDigit().foregroundStyle(.secondary)
+                    }.font(.system(size: 10))
+                }
             }
             .padding(14)
             .background(.primary.opacity(0.035), in: RoundedRectangle(cornerRadius: 14))
@@ -140,6 +175,29 @@ struct DashboardView: View {
         .frame(width: 382)
         .tint(accent)
     }
+    private func toggleHistory(_ id: HistorySelection) {
+        historySelection = historySelection == id ? nil : id
+    }
+    private func batteryState(_ state: BatteryUsage.State) -> String {
+        switch state { case .charging: return "Заряжается"; case .external: return "От сети"; case .battery: return "От батареи" }
+    }
+    private func history(_ points: [HistoryPoint], title: String, range: String, ceiling: Double) -> some View {
+        let end = Date().timeIntervalSince1970
+        let span = min(900, max(30, end - (points.first?.time ?? end)))
+        let spanLabel = span < 60 ? "\(Int(span)) с" : "\(Int(span / 60)) мин"
+        return VStack(spacing: 5) {
+            HStack { Text("\(title) · \(spanLabel)"); Spacer(); Text(range) }
+                .font(.system(size: 9)).foregroundStyle(.secondary)
+            if points.contains(where: { $0.value != nil }) {
+                HistoryGraph(points: points, start: end - span, end: end, ceiling: ceiling, color: accent).frame(height: 50)
+                    .accessibilityLabel("История \(title) за последние 15 минут")
+            } else {
+                Text("Нет показаний").font(.system(size: 10)).foregroundStyle(.secondary).frame(height: 50)
+            }
+            HStack { Text("−\(spanLabel)"); Spacer(); Text("Сейчас") }
+                .font(.system(size: 8)).foregroundStyle(.tertiary)
+        }.help("До 15 минут истории с запуска приложения, только в памяти. Масштаб расширяется по мере накопления данных. Пропуски показаний не соединяются линией.")
+    }
     private func utilization(_ title: String, icon: String, value: Double?, history: [Double], color: Color) -> some View {
         VStack(spacing: 10) {
             HStack(alignment: .firstTextBaseline, spacing: 4) {
@@ -158,14 +216,22 @@ struct DashboardView: View {
     }
     @ViewBuilder private var temperatures: some View {
         if let readings = model.hardware?.temperatures, !readings.isEmpty {
-            HStack(spacing: 0) {
-                ForEach(readings) { reading in
-                    VStack(spacing: 4) {
-                        Text(reading.title).font(.system(size: 9)).foregroundStyle(.secondary)
-                        Text(reading.celsius.map { "\(Int($0.rounded()))°" } ?? "—")
-                            .font(.system(size: 15, weight: .medium, design: .rounded)).monospacedDigit()
-                    }.frame(maxWidth: .infinity)
-                        .help(reading.celsius == nil ? "Датчик недоступен на этом Mac" : reading.detail)
+            VStack(spacing: 8) {
+                HStack(spacing: 0) {
+                    ForEach(readings) { reading in
+                        Button { toggleHistory(.temperature(reading.id)) } label: {
+                            VStack(spacing: 4) {
+                                Text(reading.title).font(.system(size: 9))
+                                    .foregroundStyle(historySelection == .temperature(reading.id) ? accent : .secondary)
+                                Text(reading.celsius.map { "\(Int($0.rounded()))°" } ?? "—")
+                                    .font(.system(size: 15, weight: .medium, design: .rounded)).monospacedDigit()
+                            }.frame(maxWidth: .infinity).contentShape(Rectangle())
+                        }.buttonStyle(.plain)
+                            .help("\(reading.detail). Нажми для истории за 15 минут.")
+                    }
+                }
+                if case let .temperature(id)? = historySelection, let reading = readings.first(where: { $0.id == id }) {
+                    history(model.history.temperatures[id]?.points ?? [], title: reading.title, range: "0–130 °C", ceiling: 130)
                 }
             }.padding(.vertical, 3)
         }
@@ -268,5 +334,33 @@ private struct Sparkline: View {
                 }.stroke(color, style: StrokeStyle(lineWidth: 1.7, lineCap: .round, lineJoin: .round))
             }
         }
+    }
+}
+
+private struct HistoryGraph: View {
+    let points: [HistoryPoint]
+    let start: TimeInterval
+    let end: TimeInterval
+    let ceiling: Double
+    let color: Color
+    var body: some View {
+        Canvas { context, size in
+            var lastPoint: CGPoint?
+            var path = Path()
+            var connected = false
+            for sample in points {
+                guard let value = sample.value, sample.time >= start else { connected = false; continue }
+                let point = CGPoint(x: size.width * min(1, max(0, (sample.time - start) / max(1, end - start))),
+                                    y: size.height * (1 - min(1, max(0, value / ceiling))))
+                if connected { path.addLine(to: point) } else { path.move(to: point) }
+                connected = true
+                lastPoint = point
+            }
+            context.stroke(path, with: .color(color), lineWidth: 1.5)
+            if let lastPoint {
+                context.fill(Path(ellipseIn: CGRect(x: lastPoint.x - 1.5, y: lastPoint.y - 1.5, width: 3, height: 3)), with: .color(color))
+            }
+        }
+        .background(.primary.opacity(0.025), in: RoundedRectangle(cornerRadius: 5))
     }
 }

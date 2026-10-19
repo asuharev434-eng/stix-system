@@ -17,6 +17,7 @@ private actor MetricsWorker {
     @Published var commonRPM: Double?
     @Published var snapshot: SystemSnapshot?
     @Published var hardware: ThermalReading?
+    @Published var history = PanelHistory()
     @Published var cpuHistory: [Double] = []
     @Published var gpuHistory: [Double] = []
     @Published var serviceReady = false
@@ -68,6 +69,8 @@ private actor MetricsWorker {
             guard let self else { return }
             self.snapshot = snapshot; self.hardware = hardware; self.sampling = false
             self.preferences.notifications.evaluate(snapshot, hardware: hardware)
+            let time = Date().timeIntervalSince1970
+            self.history.record(memoryFraction: snapshot.memory?.fraction, temperatures: hardware.temperatures, at: time)
             if let cpu = snapshot.cpu { self.cpuHistory.append(cpu); self.cpuHistory = Array(self.cpuHistory.suffix(30)) }
             if let gpu = snapshot.gpu { self.gpuHistory.append(gpu); self.gpuHistory = Array(self.gpuHistory.suffix(30)) }
             else { self.gpuHistory = [] }

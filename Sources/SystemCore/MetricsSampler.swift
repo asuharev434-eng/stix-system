@@ -5,6 +5,7 @@ import IOKit
 // Single owner, called on one background queue. No main-thread I/O.
 public final class MetricsSampler {
     private let processSampler = ProcessSampler()
+    private var networkTracker = NetworkRateTracker()
     private var swapActivity = SwapActivity()
     private var previousCPU: [UInt64]?
     private var previousDisk: (UInt64, UInt64, TimeInterval)?
@@ -20,7 +21,9 @@ public final class MetricsSampler {
         if memory == nil { issues.append("Не удалось прочитать память") }
         if disk == nil { issues.append("Не удалось прочитать диск") }
         if processes.isEmpty { issues.append("Нет доступа к списку процессов") }
-        return SystemSnapshot(cpu: cpu, gpu: gpuUsage(), memory: memory, disk: disk, processes: processes,
+        return SystemSnapshot(cpu: cpu, gpu: gpuUsage(), memory: memory, disk: disk,
+                              network: networkTracker.sample(SystemSignalsReader.networkCounters(), now: ProcessInfo.processInfo.systemUptime),
+                              battery: SystemSignalsReader.battery(), processes: processes,
                               thermalState: ProcessInfo.processInfo.thermalState.rawValue, issues: issues)
     }
     private func gpuUsage() -> Double? {

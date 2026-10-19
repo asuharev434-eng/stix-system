@@ -41,6 +41,8 @@ public struct SystemSnapshot: Sendable, Codable {
     public let gpu: Double?
     public let memory: MemoryUsage?
     public let disk: DiskUsage?
+    public let network: NetworkUsage?
+    public let battery: BatteryUsage?
     public let processes: [ProcessUsage]
     public let thermalState: Int
     public let issues: [String]

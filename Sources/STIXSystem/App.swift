@@ -1,5 +1,6 @@
 import AppKit
 import SwiftUI
+import Combine
 import SystemCore
 
 @main enum STIXSystemApplication {
@@ -19,6 +20,7 @@ private final class MonitorPanel: NSPanel {
 }
 
 @MainActor private final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
+    private var statusSubscription: AnyCancellable?
     private var item: NSStatusItem?
     private var panel: MonitorPanel?
     private var outsideClickMonitor: Any?
@@ -34,6 +36,10 @@ private final class MonitorPanel: NSPanel {
             button.toolTip = "STIX System — мониторинг Mac"
             button.target = self; button.action = #selector(toggle)
         }
+        statusSubscription = model.$snapshot.combineLatest(model.$hardware, model.preferences.$menuMetric)
+            .sink { [weak self] snapshot, hardware, metric in
+                self?.updateStatus(metric: metric, snapshot: snapshot, hardware: hardware)
+            }
         outsideClickMonitor = NSEvent.addGlobalMonitorForEvents(matching: [.leftMouseDown, .rightMouseDown]) { [weak self] _ in
             Task { @MainActor in
                 guard let panel = self?.panel, !panel.frame.contains(NSEvent.mouseLocation) else { return }
@@ -47,11 +53,28 @@ private final class MonitorPanel: NSPanel {
         show()
         model.preferences.prepare()
     }
+    private func updateStatus(metric: MenuMetric, snapshot: SystemSnapshot?, hardware: ThermalReading?) {
+        guard let item, let button = item.button else { return }
+        if let text = metric.text(cpu: snapshot?.cpu, gpu: snapshot?.gpu, temperature: hardware?.temperature) {
+            item.length = NSStatusItem.variableLength
+            button.image = nil; button.imagePosition = .noImage
+            button.font = .monospacedDigitSystemFont(ofSize: 11, weight: .medium)
+            button.title = text
+        } else {
+            item.length = NSStatusItem.squareLength
+            button.title = ""; button.imagePosition = .imageOnly
+            button.image = NSImage(systemSymbolName: "waveform.path", accessibilityDescription: "STIX System")
+        }
+        button.toolTip = "STIX System — \(metric.title)"
+        button.setAccessibilityLabel("STIX System — \(button.title.isEmpty ? "мониторинг Mac" : button.title)")
+    }
     @objc private func toggle() { if panel?.isVisible == true { panel?.orderOut(nil) } else { show() } }
     private func show() {
         let anchor = item?.button.flatMap { button in button.window?.convertToScreen(button.convert(button.bounds, to: nil)) }
         let screen = NSScreen.screens.first { screen in anchor.map { screen.frame.contains($0.center) } ?? false } ?? NSScreen.main ?? NSScreen.screens.first
         guard let screen else { return }
+        let maximumFrame = PanelPlacement.frame(content: CGSize(width: 382, height: screen.visibleFrame.height), screen: screen.frame,
+                                         visible: screen.visibleFrame, safeTop: screen.safeAreaInsets.top, anchorX: anchor?.midX)
         let frame = PanelPlacement.frame(content: CGSize(width: 382, height: 740), screen: screen.frame,
                                          visible: screen.visibleFrame, safeTop: screen.safeAreaInsets.top, anchorX: anchor?.midX)
         if panel == nil {
@@ -67,7 +90,7 @@ private final class MonitorPanel: NSPanel {
         guard let panel else { return }
         // A bounded scroll container makes even a short secondary display usable.
         panel.contentViewController = NSHostingController(rootView:
-            PanelContents(model: model, maximumHeight: frame.height) { [weak panel] height in
+            PanelContents(model: model, maximumHeight: maximumFrame.height) { [weak panel] height in
                 let fitted = PanelPlacement.frame(content: CGSize(width: 382, height: height), screen: screen.frame,
                     visible: screen.visibleFrame, safeTop: screen.safeAreaInsets.top, anchorX: anchor?.midX)
                 panel?.setFrame(fitted, display: true)

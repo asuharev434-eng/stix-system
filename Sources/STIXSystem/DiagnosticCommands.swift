@@ -31,6 +31,7 @@ import SystemCore
             do {
                 if preferences {
                     let settings = await UNUserNotificationCenter.current().notificationSettings()
+                    print("Menu metric: \(UserDefaults.standard.string(forKey: "menuMetric") ?? "icon")")
                     print("Login item status: \(SMAppService.mainApp.status.rawValue)")
                     print("Notifications authorization: \(settings.authorizationStatus.rawValue)")
                     print("Alerts enabled: \(UserDefaults.standard.object(forKey: "healthAlerts") as? Bool ?? true)")
