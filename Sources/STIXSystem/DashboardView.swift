@@ -35,15 +35,12 @@ struct DashboardView: View {
                 .menuStyle(.borderlessButton).menuIndicator(.hidden).fixedSize().help("Настройки")
             }
             VStack(alignment: .leading, spacing: 12) {
-                HStack(alignment: .firstTextBaseline) {
-                    label("ЦП", icon: "cpu")
-                    Spacer()
-                    Text(model.snapshot?.cpu.map { "\(Int(($0 * 100).rounded()))" } ?? "—")
-                        .font(.system(size: 31, weight: .medium, design: .rounded)).monospacedDigit()
-                    Text("%").font(.system(size: 13)).foregroundStyle(.secondary)
+                HStack(spacing: 14) {
+                    utilization("CPU", icon: "cpu", value: model.snapshot?.cpu, history: model.cpuHistory, color: accent)
+                    Divider().frame(height: 64)
+                    utilization("GPU", icon: "square.stack.3d.up", value: model.snapshot?.gpu, history: model.gpuHistory, color: .teal)
+                        .help("Загрузка GPU по счётчику драйвера. При нескольких GPU — наиболее загруженный. Если счётчик недоступен — прочерк.")
                 }
-                Sparkline(values: model.cpuHistory, color: accent).frame(height: 33)
-                    .accessibilityLabel("График загрузки процессора за последнюю минуту")
                 Divider()
                 HStack {
                     label("Память", icon: "memorychip")
@@ -142,6 +139,19 @@ struct DashboardView: View {
         .padding(20)
         .frame(width: 382)
         .tint(accent)
+    }
+    private func utilization(_ title: String, icon: String, value: Double?, history: [Double], color: Color) -> some View {
+        VStack(spacing: 10) {
+            HStack(alignment: .firstTextBaseline, spacing: 4) {
+                label(title, icon: icon)
+                Spacer(minLength: 2)
+                Text(value.map { "\(Int(($0 * 100).rounded()))" } ?? "—")
+                    .font(.system(size: 25, weight: .medium, design: .rounded)).monospacedDigit()
+                Text("%").font(.system(size: 11)).foregroundStyle(.secondary)
+            }.font(.system(size: 11))
+            Sparkline(values: history, color: color).frame(height: 29)
+                .accessibilityLabel("График загрузки \(title) за последнюю минуту")
+        }.frame(maxWidth: .infinity)
     }
     private func label(_ title: String, icon: String) -> some View {
         Label(title, systemImage: icon).foregroundStyle(.secondary).font(.system(size: 12))

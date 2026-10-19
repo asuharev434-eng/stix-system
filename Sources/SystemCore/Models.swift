@@ -38,6 +38,7 @@ public struct DiskUsage: Sendable, Codable {
 }
 public struct SystemSnapshot: Sendable, Codable {
     public let cpu: Double?
+    public let gpu: Double?
     public let memory: MemoryUsage?
     public let disk: DiskUsage?
     public let processes: [ProcessUsage]

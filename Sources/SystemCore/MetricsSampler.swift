@@ -20,8 +20,22 @@ public final class MetricsSampler {
         if memory == nil { issues.append("Не удалось прочитать память") }
         if disk == nil { issues.append("Не удалось прочитать диск") }
         if processes.isEmpty { issues.append("Нет доступа к списку процессов") }
-        return SystemSnapshot(cpu: cpu, memory: memory, disk: disk, processes: processes,
+        return SystemSnapshot(cpu: cpu, gpu: gpuUsage(), memory: memory, disk: disk, processes: processes,
                               thermalState: ProcessInfo.processInfo.thermalState.rawValue, issues: issues)
+    }
+    private func gpuUsage() -> Double? {
+        var iterator: io_iterator_t = 0
+        guard IOServiceGetMatchingServices(kIOMainPortDefault, IOServiceMatching("IOAccelerator"), &iterator) == KERN_SUCCESS else { return nil }
+        defer { IOObjectRelease(iterator) }
+        var percentages: [Double] = []
+        while case let service = IOIteratorNext(iterator), service != 0 {
+            defer { IOObjectRelease(service) }
+            guard let stats = IORegistryEntryCreateCFProperty(service, "PerformanceStatistics" as CFString, kCFAllocatorDefault, 0)?.takeRetainedValue() as? [String: Any],
+                  let value = stats["Device Utilization %"] as? NSNumber,
+                  CFGetTypeID(value) != CFBooleanGetTypeID() else { continue }
+            percentages.append(value.doubleValue)
+        }
+        return GPUUsage.fraction(percentages: percentages)
     }
     private func cpuUsage() -> Double? {
         var info = host_cpu_load_info()

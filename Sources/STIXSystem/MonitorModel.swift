@@ -18,6 +18,7 @@ private actor MetricsWorker {
     @Published var snapshot: SystemSnapshot?
     @Published var hardware: ThermalReading?
     @Published var cpuHistory: [Double] = []
+    @Published var gpuHistory: [Double] = []
     @Published var serviceReady = false
     @Published var needsApproval = false
     @Published var manualFanIDs: Set<Int> = []
@@ -68,6 +69,8 @@ private actor MetricsWorker {
             self.snapshot = snapshot; self.hardware = hardware; self.sampling = false
             self.preferences.notifications.evaluate(snapshot, hardware: hardware)
             if let cpu = snapshot.cpu { self.cpuHistory.append(cpu); self.cpuHistory = Array(self.cpuHistory.suffix(30)) }
+            if let gpu = snapshot.gpu { self.gpuHistory.append(gpu); self.gpuHistory = Array(self.gpuHistory.suffix(30)) }
+            else { self.gpuHistory = [] }
         }
     }
     func refreshService() {
