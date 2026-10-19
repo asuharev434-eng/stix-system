@@ -22,6 +22,10 @@ public struct MemoryUsage: Sendable, Codable {
     public let used: UInt64
     public let total: UInt64
     public let pressure: Int
+    public let available: UInt64
+    public let cached: UInt64
+    public let swapReadBytesPerSecond: Double?
+    public let swapWriteBytesPerSecond: Double?
     public let compressedUsed: UInt64
     public let swapUsed: UInt64?
     public var fraction: Double { total > 0 ? min(1, Double(used) / Double(total)) : 0 }
@@ -72,9 +76,5 @@ public enum MetricMath {
     public static func rate(previous: UInt64?, current: UInt64, seconds: Double) -> Double? {
         guard let previous, current >= previous, seconds > 0, seconds.isFinite else { return nil }
         return Double(current - previous) / seconds
-    }
-    public static func usedMemory(active: UInt64, wired: UInt64, compressed: UInt64, purgeable: UInt64, pageSize: UInt64, total: UInt64) -> UInt64 {
-        let pages = active + wired + compressed
-        return min(total, (pages - min(pages, purgeable)) * pageSize)
     }
 }

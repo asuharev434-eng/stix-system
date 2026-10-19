@@ -6,6 +6,9 @@ struct DashboardView: View {
     @ObservedObject var preferences: AppPreferences
     init(model: MonitorModel) { self.model = model; self.preferences = model.preferences }
     private let accent = Color(red: 0.28, green: 0.47, blue: 0.96)
+    private func swapRate(_ value: Double?) -> String {
+        value.map { String(format: "%.2f", $0 / 1_048_576) } ?? "—"
+    }
     private func gigabytes(_ value: UInt64?) -> String {
         value.map { String(format: "%.2f ГБ", Double($0) / 1_073_741_824) } ?? "—"
     }
@@ -56,8 +59,15 @@ struct DashboardView: View {
                             .frame(width: geometry.size.width * memory.fraction)
                     }.frame(height: 4)
                     HStack {
+                        Text("Доступно \(gigabytes(memory.available))")
+                        Spacer()
+                        Text("Кэш \(gigabytes(memory.cached))")
+                    }.font(.system(size: 10)).monospacedDigit().foregroundStyle(.secondary)
+                        .help("Доступно — оценка RAM с учётом освобождаемого файлового кэша и purgeable-памяти. Компрессор остаётся занятой RAM; кэш уже включён в доступную память.")
+                    HStack {
                         Text("Давление памяти")
                         Spacer()
+                        Circle().fill(memory.pressure >= 4 ? Color.red : memory.pressure == 2 ? Color.orange : memory.pressure == 1 ? Color.green : Color.gray).frame(width: 5, height: 5)
                         Text(memory.pressure == 1 ? "Нормальное" : memory.pressure == 2 ? "Повышенное" : memory.pressure >= 4 ? "Высокое" : "Недоступно")
                     }.font(.system(size: 10)).foregroundStyle(.secondary)
                     HStack {
@@ -71,6 +81,13 @@ struct DashboardView: View {
                             Text(gigabytes(memory.compressedUsed)).monospacedDigit()
                         }.help("Объём RAM, занимаемый сжатой памятью")
                     }.font(.system(size: 10)).foregroundStyle(.secondary)
+                    HStack {
+                        Text("Подкачка")
+                        Spacer()
+                        Text("↓ \(swapRate(memory.swapReadBytesPerSecond))  ↑ \(swapRate(memory.swapWriteBytesPerSecond)) МБ/с")
+                            .monospacedDigit()
+                    }.font(.system(size: 10)).foregroundStyle(.secondary)
+                        .help("Чтение ↓ и запись ↑ страниц swap за последний интервал. Логический объём страниц, не физическая скорость SSD. Значение не измеряет задержки приложений.")
                 }
                 Divider()
                 HStack {

@@ -5,6 +5,7 @@ import IOKit
 // Single owner, called on one background queue. No main-thread I/O.
 public final class MetricsSampler {
     private let processSampler = ProcessSampler()
+    private var swapActivity = SwapActivity()
     private var previousCPU: [UInt64]?
     private var previousDisk: (UInt64, UInt64, TimeInterval)?
     public init() {}
@@ -50,10 +51,15 @@ public final class MetricsSampler {
         var pressureSize = MemoryLayout<Int32>.size
         let pressureOK = sysctlbyname("kern.memorystatus_vm_pressure_level", &pressure, &pressureSize, nil, 0) == 0
         let total = ProcessInfo.processInfo.physicalMemory
-        return MemoryUsage(used: MetricMath.usedMemory(active: UInt64(info.active_count), wired: UInt64(info.wire_count),
-                  compressed: UInt64(info.compressor_page_count), purgeable: UInt64(info.purgeable_count), pageSize: UInt64(page), total: total),
-                  total: total, pressure: pressureOK ? Int(pressure) : 0,
-                  compressedUsed: UInt64(info.compressor_page_count) * UInt64(page), swapUsed: swapUsage())
+        let accounting = MemoryAccounting(anonymous: UInt64(info.internal_page_count), wired: UInt64(info.wire_count),
+                compressed: UInt64(info.compressor_page_count), purgeable: UInt64(info.purgeable_count),
+                fileBacked: UInt64(info.external_page_count), pageSize: UInt64(page), total: total)
+        let activity = swapActivity.sample(input: info.swapins, output: info.swapouts,
+                pageSize: UInt64(page), now: ProcessInfo.processInfo.systemUptime)
+        return MemoryUsage(used: accounting.used, total: total, pressure: pressureOK ? Int(pressure) : 0,
+                available: accounting.available, cached: accounting.cached,
+                swapReadBytesPerSecond: activity.read, swapWriteBytesPerSecond: activity.write,
+                compressedUsed: UInt64(info.compressor_page_count) * UInt64(page), swapUsed: swapUsage())
     }
     private func swapUsage() -> UInt64? {
         var usage = xsw_usage()
