@@ -22,6 +22,7 @@ public struct MemoryUsage: Sendable, Codable {
     public let used: UInt64
     public let total: UInt64
     public let pressure: Int
+    public let compressedUsed: UInt64
     public let swapUsed: UInt64?
     public var fraction: Double { total > 0 ? min(1, Double(used) / Double(total)) : 0 }
 }

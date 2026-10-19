@@ -52,7 +52,8 @@ public final class MetricsSampler {
         let total = ProcessInfo.processInfo.physicalMemory
         return MemoryUsage(used: MetricMath.usedMemory(active: UInt64(info.active_count), wired: UInt64(info.wire_count),
                   compressed: UInt64(info.compressor_page_count), purgeable: UInt64(info.purgeable_count), pageSize: UInt64(page), total: total),
-                  total: total, pressure: pressureOK ? Int(pressure) : 0, swapUsed: swapUsage())
+                  total: total, pressure: pressureOK ? Int(pressure) : 0,
+                  compressedUsed: UInt64(info.compressor_page_count) * UInt64(page), swapUsed: swapUsage())
     }
     private func swapUsage() -> UInt64? {
         var usage = xsw_usage()

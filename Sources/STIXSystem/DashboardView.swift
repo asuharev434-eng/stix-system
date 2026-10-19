@@ -6,6 +6,9 @@ struct DashboardView: View {
     @ObservedObject var preferences: AppPreferences
     init(model: MonitorModel) { self.model = model; self.preferences = model.preferences }
     private let accent = Color(red: 0.28, green: 0.47, blue: 0.96)
+    private func gigabytes(_ value: UInt64?) -> String {
+        value.map { String(format: "%.2f ГБ", Double($0) / 1_073_741_824) } ?? "—"
+    }
     private func bytes(_ value: UInt64) -> String { ByteCountFormatter.string(fromByteCount: Int64(clamping: value), countStyle: .memory) }
     private func rate(_ value: Double?) -> String {
         guard let value, value.isFinite else { return "—" }
@@ -58,12 +61,16 @@ struct DashboardView: View {
                         Text(memory.pressure == 1 ? "Нормальное" : memory.pressure == 2 ? "Повышенное" : memory.pressure >= 4 ? "Высокое" : "Недоступно")
                     }.font(.system(size: 10)).foregroundStyle(.secondary)
                     HStack {
-                        Text("Swap")
+                        HStack(spacing: 4) {
+                            Text("Swap")
+                            Text(gigabytes(memory.swapUsed)).monospacedDigit()
+                        }.help("Использованный swap на диске")
                         Spacer()
-                        Text(memory.swapUsed.map { String(format: "%.2f ГБ", Double($0) / 1_073_741_824) } ?? "—")
-                            .monospacedDigit()
+                        HStack(spacing: 4) {
+                            Text("Сжато")
+                            Text(gigabytes(memory.compressedUsed)).monospacedDigit()
+                        }.help("Объём RAM, занимаемый сжатой памятью")
                     }.font(.system(size: 10)).foregroundStyle(.secondary)
-                        .help("Использованный swap на диске")
                 }
                 Divider()
                 HStack {
