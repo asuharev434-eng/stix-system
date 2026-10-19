@@ -57,6 +57,13 @@ struct DashboardView: View {
                         Spacer()
                         Text(memory.pressure == 1 ? "Нормальное" : memory.pressure == 2 ? "Повышенное" : memory.pressure >= 4 ? "Высокое" : "Недоступно")
                     }.font(.system(size: 10)).foregroundStyle(.secondary)
+                    HStack {
+                        Text("Swap")
+                        Spacer()
+                        Text(memory.swapUsed.map { String(format: "%.2f ГБ", Double($0) / 1_073_741_824) } ?? "—")
+                            .monospacedDigit()
+                    }.font(.system(size: 10)).foregroundStyle(.secondary)
+                        .help("Использованный swap на диске")
                 }
                 Divider()
                 HStack {

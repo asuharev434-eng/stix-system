@@ -52,7 +52,14 @@ public final class MetricsSampler {
         let total = ProcessInfo.processInfo.physicalMemory
         return MemoryUsage(used: MetricMath.usedMemory(active: UInt64(info.active_count), wired: UInt64(info.wire_count),
                   compressed: UInt64(info.compressor_page_count), purgeable: UInt64(info.purgeable_count), pageSize: UInt64(page), total: total),
-                  total: total, pressure: pressureOK ? Int(pressure) : 0)
+                  total: total, pressure: pressureOK ? Int(pressure) : 0, swapUsed: swapUsage())
+    }
+    private func swapUsage() -> UInt64? {
+        var usage = xsw_usage()
+        var size = MemoryLayout<xsw_usage>.size
+        guard sysctlbyname("vm.swapusage", &usage, &size, nil, 0) == 0,
+              size == MemoryLayout<xsw_usage>.size else { return nil }
+        return usage.xsu_used
     }
     private func diskUsage() -> DiskUsage? {
         // /System/Volumes/Data is the writable user-data APFS volume.
