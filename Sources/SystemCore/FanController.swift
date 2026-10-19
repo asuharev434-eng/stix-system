@@ -43,9 +43,9 @@ public final class FanController {
         guard !(active && owner == nil) else { throw HardwareError.invalid("Ожидается восстановление автоматического режима") }
         let reading = hardware.snapshot()
         guard !reading.fans.isEmpty, reading.error == nil else { throw HardwareError.unavailable }
-        if FanPolicy.overheated(reading, thermalState: thermal()) {
+        if let reason = FanPolicy.blockReason(reading, thermalState: thermal()) {
             try restore()
-            throw HardwareError.invalid("CPU/GPU ≥95 °C или системный перегрев — управление возвращено macOS")
+            throw HardwareError.invalid(reason)
         }
         if !active {
             guard reading.fans.allSatisfy({ $0.manual == false }) else {

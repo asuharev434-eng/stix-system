@@ -8,6 +8,16 @@ public enum FanPolicy {
         let chipTemperatures = reading.temperatures.filter { $0.id == "cpu" || $0.id == "gpu" }.compactMap(\.celsius)
         return (chipTemperatures + [reading.temperature].compactMap { $0 }).contains { $0.isFinite && $0 >= overheatCelsius }
     }
+    public static func blockReason(_ reading: ThermalReading?, thermalState: Int) -> String? {
+        if let reading, overheated(reading, thermalState: 0) {
+            return "Ручной режим недоступен: CPU/GPU ≥95 °C. Управление — Авто."
+        }
+        if thermalState >= 2 {
+            let state = thermalState == 2 ? "serious" : "critical"
+            return "Ручной режим недоступен: статус macOS \(state). Управление — Авто."
+        }
+        return nil
+    }
     public static let leaseDuration: TimeInterval = 12
     public static func target(fan: FanReading, fraction: Double, thermalState: Int) throws -> Double {
         guard fraction.isFinite, (0...1).contains(fraction),

@@ -194,7 +194,7 @@ struct DashboardView: View {
                     Button(model.needsApproval ? "Разрешить в настройках macOS…" : "Включить управление…") { model.enableService() }
                         .buttonStyle(.bordered).controlSize(.small)
                 } else {
-                    Text("CPU/GPU ≥95 °C или потеря связи — обратно в Авто")
+                    Text(model.manualBlockReason ?? "CPU/GPU ≥95 °C или потеря связи — обратно в Авто")
                         .font(.system(size: 9)).foregroundStyle(.tertiary)
                 }
             } else {
@@ -219,6 +219,8 @@ struct DashboardView: View {
             Button("Авто") { model.automatic(id: id) }.buttonStyle(.bordered).tint(isManual ? .secondary : accent)
             Button(isManual ? "Применить" : "Вручную") { model.applyManual(id: id) }
                 .buttonStyle(.bordered).tint(isManual ? accent : .secondary)
+                .disabled(model.manualBlockReason != nil)
+                .help(model.manualBlockReason ?? "Применить заданные обороты")
             if preferences.rpmUnits {
                 Slider(value: Binding(get: { model.selectedRPM(id) }, set: { value in
                     if let id { model.fanRPMs[id] = value } else { model.commonRPM = value }

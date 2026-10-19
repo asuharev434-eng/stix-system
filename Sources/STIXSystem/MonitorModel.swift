@@ -93,6 +93,7 @@ private actor MetricsWorker {
     }
     func applyManual(id: Int? = nil) {
         guard serviceReady, !busy else { return }
+        if let reason = manualBlockReason { message = reason; return }
         startOperation()
         let operation = operationID
         let completion: (String?) -> Void = { [weak self] error in
@@ -172,14 +173,15 @@ private actor MetricsWorker {
         client.disconnect()
         NSApplication.shared.terminate(nil)
     }
+    var manualBlockReason: String? { FanPolicy.blockReason(hardware, thermalState: snapshot?.thermalState ?? 0) }
     var thermalTitle: String {
-        if let hardware, FanPolicy.overheated(hardware, thermalState: snapshot?.thermalState ?? 0) { return "Высокая температура" }
+        if let hardware, FanPolicy.overheated(hardware, thermalState: 0) { return "Высокая температура" }
         if let temperature = hardware?.temperature, temperature >= 90 { return "Температура повышена" }
         switch snapshot?.thermalState {
         case 0: return "Нагрев в норме"
         case 1: return "Повышенный нагрев"
-        case 2: return "Высокий нагрев"
-        case 3: return "Критический нагрев"
+        case 2: return "Ограничение macOS"
+        case 3: return "Ограничение macOS"
         default: return "Проверяю состояние"
         }
     }

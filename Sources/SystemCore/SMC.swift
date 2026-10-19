@@ -65,17 +65,18 @@ public final class SMC {
             Thread.sleep(forTimeInterval: 3)
         }
         #endif
-        var confirmed = false
-        for _ in 0..<60 {
-            if read(key) != 1 { try write(key, 1) }
-            try write("F\(id)Tg", rpm)
-            Thread.sleep(forTimeInterval: 0.1)
-            if read(key) == 1, let target = read("F\(id)Tg"), abs(target - rpm) < 5 {
-                confirmed = true; break
+        do {
+            try FanModeTransition.perform(attempts: 100, write: {
+                if self.read(key) != 1 { try self.write(key, 1, attempts: 1) }
+                try self.write("F\(id)Tg", rpm, attempts: 1)
+            }, confirmed: {
+                self.read(key) == 1 && self.read("F\(id)Tg").map { abs($0 - rpm) < 5 } == true
+            }, wait: { Thread.sleep(forTimeInterval: 0.1) })
+        } catch {
+            if read(key) == 3 {
+                throw HardwareError.invalid("SMC удерживает системный режим (\(key)=3). Ручное управление пока недоступно; управление возвращено macOS.")
             }
-        }
-        guard confirmed else {
-            throw HardwareError.invalid("SMC не подтвердил ручной режим: \(key)=\(read(key) ?? -1), цель=\(read("F\(id)Tg") ?? -1), Ftst=\(read("Ftst") ?? -1)")
+            throw HardwareError.invalid("\(error.localizedDescription). SMC: \(key)=\(read(key) ?? -1), цель=\(read("F\(id)Tg") ?? -1), Ftst=\(read("Ftst") ?? -1)")
         }
     }
 

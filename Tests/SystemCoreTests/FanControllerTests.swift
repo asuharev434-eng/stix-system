@@ -23,6 +23,18 @@ private final class FakeFans: FanHardware {
     }
 }
 final class FanControllerTests: XCTestCase {
+    func testCoolSensorsWithSeriousSystemStateReportSystemRestriction() throws {
+        let hardware = FakeFans(); hardware.cpu = 60; hardware.gpu = 59
+        var state = 2
+        let controller = FanController(hardware: hardware, thermal: { state })
+        XCTAssertThrowsError(try controller.manual(fraction: 1, owner: "a")) { error in
+            XCTAssertTrue(error.localizedDescription.contains("serious"))
+        }
+        XCTAssertTrue(hardware.writes.isEmpty)
+        state = 0
+        try controller.manual(fraction: 1, owner: "a")
+        XCTAssertEqual(hardware.writes.last?.1, 6000)
+    }
     func testStopUsesZeroTargetAndKeepsOtherFanIndependent() throws {
         let hardware = FakeFans(); hardware.fanCount = 2
         let controller = FanController(hardware: hardware, thermal: { 0 })
