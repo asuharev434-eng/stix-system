@@ -2,10 +2,11 @@ import Foundation
 import DiskArbitration
 
 public enum ExternalVolumeMath {
-    /// Returns the nearest whole-percent fill level, or nil for invalid capacity data.
-    public static func usedPercent(total: UInt64, available: UInt64) -> Int? {
+    /// Validates a capacity pair once and derives both the exact fill fraction and its display percent.
+    public static func metrics(total: UInt64, available: UInt64) -> ExternalVolumeMetrics? {
         guard total > 0, available <= total else { return nil }
-        return Int((Double(total - available) / Double(total) * 100).rounded())
+        let fraction = Double(total - available) / Double(total)
+        return ExternalVolumeMetrics(usedFraction: fraction, usedPercent: Int((fraction * 100).rounded()))
     }
 
     /// Unknown device/network state is rejected: only positively identified local external hardware is shown.
@@ -15,6 +16,11 @@ public enum ExternalVolumeMath {
         guard !normalized.isEmpty else { return false }
         return !["DISK IMAGE", "IMAGE", "VIRTUAL", "NETWORK", "FILE"].contains(normalized)
     }
+}
+
+public struct ExternalVolumeMetrics: Sendable, Equatable {
+    public let usedFraction: Double
+    public let usedPercent: Int
 }
 
 public enum ExternalVolumeSampler {
@@ -31,8 +37,9 @@ public enum ExternalVolumeSampler {
                   let values = try? url.resourceValues(forKeys: [.volumeNameKey, .volumeTotalCapacityKey, .volumeAvailableCapacityKey]),
                   let capacity = values.volumeTotalCapacity, capacity > 0,
                   let available = values.volumeAvailableCapacity, available >= 0,
-                  let percent = ExternalVolumeMath.usedPercent(total: UInt64(capacity), available: UInt64(available)) else { return nil }
-            return ExternalVolumeUsage(id: url.path, name: values.volumeName ?? url.lastPathComponent, usedPercent: percent)
+                  let usage = ExternalVolumeUsage(id: url.path, name: values.volumeName ?? url.lastPathComponent,
+                                                  totalBytes: UInt64(capacity), availableBytes: UInt64(available)) else { return nil }
+            return usage
         }.sorted { $0.name.localizedStandardCompare($1.name) == .orderedAscending }
     }
 }

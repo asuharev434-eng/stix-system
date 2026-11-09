@@ -39,9 +39,12 @@ public struct DiskUsage: Sendable, Codable {
 public struct ExternalVolumeUsage: Identifiable, Sendable, Codable, Equatable {
     public let id: String
     public let name: String
-    public let usedPercent: Int
-    public init(id: String, name: String, usedPercent: Int) {
-        self.id = id; self.name = name; self.usedPercent = min(100, max(0, usedPercent))
+    public let totalBytes: UInt64
+    public let availableBytes: UInt64
+    public var metrics: ExternalVolumeMetrics? { ExternalVolumeMath.metrics(total: totalBytes, available: availableBytes) }
+    public init?(id: String, name: String, totalBytes: UInt64, availableBytes: UInt64) {
+        guard ExternalVolumeMath.metrics(total: totalBytes, available: availableBytes) != nil else { return nil }
+        self.id = id; self.name = name; self.totalBytes = totalBytes; self.availableBytes = availableBytes
     }
 }
 public struct SystemSnapshot: Sendable, Codable {

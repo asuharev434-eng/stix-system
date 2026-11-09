@@ -3,14 +3,21 @@ import XCTest
 
 final class ExternalVolumeTests: XCTestCase {
     func testUsedPercentageRoundsToNearestWholePercent() {
-        XCTAssertEqual(ExternalVolumeMath.usedPercent(total: 100, available: 98), 2)
-        XCTAssertEqual(ExternalVolumeMath.usedPercent(total: 3, available: 2), 33)
-        XCTAssertEqual(ExternalVolumeMath.usedPercent(total: 100, available: 0), 100)
+        XCTAssertEqual(ExternalVolumeMath.metrics(total: 100, available: 98)?.usedPercent, 2)
+        XCTAssertEqual(ExternalVolumeMath.metrics(total: 3, available: 2)?.usedPercent, 33)
+        XCTAssertEqual(ExternalVolumeMath.metrics(total: 100, available: 0)?.usedPercent, 100)
+    }
+
+    func testMetricsUseTheSameValidatedCapacityPair() {
+        let metrics = ExternalVolumeMath.metrics(total: 3, available: 2)
+        XCTAssertEqual(metrics?.usedFraction, 1.0 / 3.0)
+        XCTAssertEqual(metrics?.usedPercent, 33)
     }
 
     func testInvalidCapacityIsIgnored() {
-        XCTAssertNil(ExternalVolumeMath.usedPercent(total: 0, available: 0))
-        XCTAssertNil(ExternalVolumeMath.usedPercent(total: 100, available: 101))
+        XCTAssertNil(ExternalVolumeMath.metrics(total: 0, available: 0))
+        XCTAssertNil(ExternalVolumeMath.metrics(total: 100, available: 101))
+        XCTAssertNil(ExternalVolumeUsage(id: "disk", name: "Disk", totalBytes: 100, availableBytes: 101))
     }
 
     func testFixedUSBExternalDiskIsAccepted() {

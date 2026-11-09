@@ -15,6 +15,9 @@ struct DashboardView: View {
     private func gigabytes(_ value: UInt64?) -> String {
         value.map { String(format: "%.2f ГБ", Double($0) / 1_073_741_824) } ?? "—"
     }
+    private func decimalGigabytes(_ value: UInt64) -> String {
+        (Double(value) / 1_000_000_000).formatted(.number.precision(.fractionLength(0...1)))
+    }
     private func bytes(_ value: UInt64) -> String { ByteCountFormatter.string(fromByteCount: Int64(clamping: value), countStyle: .memory) }
     private func rate(_ value: Double?) -> String {
         guard let value, value.isFinite else { return "—" }
@@ -121,15 +124,31 @@ struct DashboardView: View {
                     .help("Скорость чтения и записи всех физических дисков Mac")
                 if let externalVolumes = model.snapshot?.externalVolumes, !externalVolumes.isEmpty {
                     ForEach(externalVolumes) { volume in
-                        HStack(spacing: 6) {
-                            Image(systemName: "externaldrive").foregroundStyle(.tertiary)
-                            Text(volume.name).lineLimit(1).truncationMode(.middle)
-                            Spacer(minLength: 4)
-                            Text("\(volume.usedPercent)%")
-                                .monospacedDigit().foregroundStyle(.secondary).frame(width: 34, alignment: .trailing)
+                        if let metrics = volume.metrics {
+                            let available = decimalGigabytes(volume.availableBytes)
+                            let total = decimalGigabytes(volume.totalBytes)
+                            let description = "\(volume.name), \(available) ГБ свободно из \(total) ГБ, занято \(metrics.usedPercent)%"
+                            VStack(spacing: 3) {
+                                HStack(spacing: 5) {
+                                    Image(systemName: "externaldrive").foregroundStyle(.tertiary)
+                                    Text(volume.name).lineLimit(1).truncationMode(.middle).frame(maxWidth: .infinity, alignment: .leading)
+                                    Text("Своб. \(available) / \(total) ГБ")
+                                        .monospacedDigit().foregroundStyle(.secondary).lineLimit(1).fixedSize()
+                                    Text("\(metrics.usedPercent)%")
+                                        .monospacedDigit().foregroundStyle(.secondary).frame(width: 28, alignment: .trailing)
+                                }
+                                GeometryReader { geometry in
+                                    Capsule().fill(.quaternary)
+                                    Capsule().fill(accent)
+                                        .frame(width: geometry.size.width * metrics.usedFraction)
+                                }
+                                .frame(height: 3)
+                            }
+                            .font(.system(size: 10))
+                            .accessibilityElement(children: .ignore)
+                            .accessibilityLabel(description)
+                            .help(description)
                         }
-                        .font(.system(size: 10))
-                        .help("\(volume.name) · занято \(volume.usedPercent)%")
                     }
                 }
                 HStack {
