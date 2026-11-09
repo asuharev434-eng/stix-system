@@ -22,6 +22,7 @@ public final class MetricsSampler {
         if disk == nil { issues.append("Не удалось прочитать диск") }
         if processes.isEmpty { issues.append("Нет доступа к списку процессов") }
         return SystemSnapshot(cpu: cpu, gpu: gpuUsage(), memory: memory, disk: disk,
+                              externalVolumes: ExternalVolumeSampler.sample(),
                               network: networkTracker.sample(SystemSignalsReader.networkCounters(), now: ProcessInfo.processInfo.systemUptime),
                               battery: SystemSignalsReader.battery(), processes: processes,
                               thermalState: ProcessInfo.processInfo.thermalState.rawValue, issues: issues)

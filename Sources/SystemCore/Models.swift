@@ -36,11 +36,20 @@ public struct DiskUsage: Sendable, Codable {
     public let readBytesPerSecond: Double?
     public let writeBytesPerSecond: Double?
 }
+public struct ExternalVolumeUsage: Identifiable, Sendable, Codable, Equatable {
+    public let id: String
+    public let name: String
+    public let usedPercent: Int
+    public init(id: String, name: String, usedPercent: Int) {
+        self.id = id; self.name = name; self.usedPercent = min(100, max(0, usedPercent))
+    }
+}
 public struct SystemSnapshot: Sendable, Codable {
     public let cpu: Double?
     public let gpu: Double?
     public let memory: MemoryUsage?
     public let disk: DiskUsage?
+    public let externalVolumes: [ExternalVolumeUsage]
     public let network: NetworkUsage?
     public let battery: BatteryUsage?
     public let processes: [ProcessUsage]

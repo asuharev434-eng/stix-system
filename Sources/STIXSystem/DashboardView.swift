@@ -119,6 +119,19 @@ struct DashboardView: View {
                     Text("Запись  \(rate(model.snapshot?.disk?.writeBytesPerSecond))")
                 }.font(.system(size: 10)).monospacedDigit().foregroundStyle(.secondary)
                     .help("Скорость чтения и записи всех физических дисков Mac")
+                if let externalVolumes = model.snapshot?.externalVolumes, !externalVolumes.isEmpty {
+                    ForEach(externalVolumes) { volume in
+                        HStack(spacing: 6) {
+                            Image(systemName: "externaldrive").foregroundStyle(.tertiary)
+                            Text(volume.name).lineLimit(1).truncationMode(.middle)
+                            Spacer(minLength: 4)
+                            Text("\(volume.usedPercent)%")
+                                .monospacedDigit().foregroundStyle(.secondary).frame(width: 34, alignment: .trailing)
+                        }
+                        .font(.system(size: 10))
+                        .help("\(volume.name) · занято \(volume.usedPercent)%")
+                    }
+                }
                 HStack {
                     label("Сеть", icon: "network")
                     Spacer()
